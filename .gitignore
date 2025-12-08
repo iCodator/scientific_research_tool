@@ -61,9 +61,9 @@ logs/
 # Output / Daten
 output/
 results/
-data/
-*.csv
-*.json
+/data/
+/output/*.csv
+/output/*.json
 
 # OS-spezifisch
 .DS_Store
