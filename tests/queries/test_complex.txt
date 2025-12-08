@@ -1,0 +1,3 @@
+cat > tests/queries/test_complex.txt << 'EOF'
+machine learning[TitleAbstract] OR artificial intelligence[TitleAbstract] AND (medical OR clinical)[TitleAbstract] AND 2020:2025[pdat] NOT opinion[TitleAbstract]
+EOF
