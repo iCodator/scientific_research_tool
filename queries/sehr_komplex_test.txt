@@ -1,0 +1,25 @@
+(
+  (
+    ("CRISPR-Cas9" OR "CRISPR/Cas9" OR "clustered regularly interspaced short palindromic repeats")
+    OR
+    ("gene editing" OR "genome editing" OR "base editing" OR "prime editing")
+  )
+  AND
+  (
+    ("Sickle Cell Disease" OR "Anemia, Sickle Cell")
+    OR
+    ("Beta-Thalassemia" OR "beta-thalassaemia")
+    OR
+    "hemoglobinopathies"
+  )
+)
+AND
+(
+  "clinical trial" OR "clinical study" OR "gene therapy"
+  OR "therapeutic outcome" OR "safety profile"
+)
+AND NOT
+(
+  mouse[Title/Abstract] OR mice[Title/Abstract] OR rat[Title/Abstract] OR rats[Title/Abstract] OR murine[Title/Abstract] OR "animal model"[Title/Abstract]
+)
+AND 2023:2025[dp]
