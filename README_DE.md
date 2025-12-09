@@ -101,6 +101,12 @@ python main.py \
   --limit 100
 ```
 
+### Cochrane Suche
+
+```bash
+python main.py --query "cancer AND immunotherapy" --source cochrane --limit 10
+```
+
 ### Aus Anfrage-Datei
 
 ```bash
@@ -115,11 +121,13 @@ python main.py --query-file my_query.txt --source pubmed --output results.csv
 
 ## 🗄️ Unterstützte Datenbanken
 
-| Datenbank   | Quelle       | Größe             | Syntax                                                          |
+| Datenbank   | Quelle       | Größe             | Zugang                                                          |
 |-------------|--------------|-------------------|-----------------------------------------------------------------|
-| **PubMed**  | NCBI (USA)   | 34 Mio.+ Artikel  | [NCBI Query](https://www.ncbi.nlm.nih.gov/books/NBK3827/)      |
-| **Europe PMC** | EBI (Europa) | 42 Mio.+ Artikel | [Europe PMC](https://europepmc.org/api)                        |
-| **Cochrane** | Cochrane Org | Systematische Reviews | [Cochrane API](https://data.cochrane.org/)                |
+| **PubMed**  | NCBI (USA)   | 34 Mio.+ Artikel  | [NCBI Query](https://www.ncbi.nlm.nih.gov/books/NBK3827/) via JSON API |
+| **Europe PMC** | EBI (Europa) | 42 Mio.+ Artikel | [Europe PMC API](https://europepmc.org/api)                        |
+| **Cochrane** | Europe PMC¹ | Systematische Reviews | [Europe PMC](https://europepmc.org/api) mit Auto-Filter            |
+
+¹ **Hinweis zu Cochrane**: Cochrane-Reviews werden über die Europe PMC API abgerufen für maximale Zuverlässigkeit. Anfragen nutzen breite Suche (`AND Cochrane`) mit automatischer clientseitiger Filterung für Präzision.
 
 ---
 
@@ -184,7 +192,7 @@ EUROPEPMC_API_KEY=dein_key_hier
 ```csv
 title,authors,year,journal,url,abstract
 "Cancer Immunotherapy","Smith J, Jones A",2024,"Nature","https://...",
-"Tumor Mechanism","Brown B",2023,"Cell","https://...","..."
+"Tumor Mechanism","Brown B",2023,"Cell","https://...",
 ```
 
 ### JSON-Export
@@ -219,7 +227,7 @@ python main.py --query-file my_query.txt --source pubmed
 # Mit Export
 python main.py --query "cancer" --source pubmed --output results.csv
 
-# Debug-Modus
+# Debug-Modus (zeigt Logs im Terminal)
 python main.py --query "cancer" --source pubmed --verbose
 
 # Benutzerdefiniertes Limit
@@ -249,29 +257,12 @@ Nur **strukturierte Anfragen** mit AND, OR, NOT Operatoren. Natürlichsprachige 
 
 ### Wo sind die Logs?
 
-Alle Suchen werden automatisch in `logs/search_*.log` protokolliert.
+Alle Suchen werden automatisch in `logs/search_*.log` protokolliert. Nutze das `--verbose` Flag um auch Terminal-Output zu sehen.
 
-### Wo speichere ich config.env?
+### Wie unterscheidet sich Cochrane von Europe PMC?
 
-Im Projekt-Root-Verzeichnis:
-
-```text
-scientific_research/
-├── config.env          ← HIER (nicht auf GitHub!)
-├── main.py
-├── requirements.txt
-└── ...
-```
-
-### Kann ich mehrere Datenbanken gleichzeitig durchsuchen?
-
-Nein, momentan nur eine Datenbank pro Aufruf. Aber du kannst mit Bash-Scripts mehrere Aufrufe hintereinander ausführen:
-
-```bash
-python main.py --query "cancer" --source pubmed --output results_pubmed.csv
-python main.py --query "cancer" --source europepmc --output results_europepmc.csv
-python main.py --query "cancer" --source cochrane --output results_cochrane.csv
-```
+- **Europe PMC**: Durchsucht alle Artikeltypen über 42 Mio.+ Artikel
+- **Cochrane**: Gefiltert speziell auf **Systematische Reviews** via automatischer Erkennung (Journal-Name + DOI-Präfix + Titel-Keywords)
 
 ---
 
@@ -283,347 +274,41 @@ Deine Anfrage ist nicht strukturiert. Nutze AND, OR, NOT Operatoren.
 
 ```text
 ❌ "Welche Rolle spielt Coenzym Q10?"
-✅ "(Coenzym Q10) AND role"
+✅ "(Coenzym Q10) AND Rolle"
 ```
 
 ### "No results found"
 
-1. Anfrage vereinfachen (weniger AND-Bedingungen)
-2. Synonyme nutzen: `(cancer OR carcinoma OR tumor)`
-3. Rechtschreibung prüfen
-4. `--limit` erhöhen
+Versuche:
+1. Vereinfache die Anfrage (entferne zu viele AND Bedingungen)
+2. Nutze Synonyme: `(cancer OR carcinoma OR tumor)`
+3. Überprüfe Rechtschreibung
+4. Erhöhe das `--limit`
 
 ### "Connection timeout"
 
-Die Datenbank antwortet nicht. Später erneut versuchen oder einen API-Key nutzen.
-
-### "ModuleNotFoundError: No module named 'src'"
-
-Stelle sicher, dass du vom **Projekt-Root** aus startest:
-
-```bash
-# RICHTIG:
-cd scientific_research
-python main.py --query "cancer" --source pubmed
-
-# FALSCH:
-cd src
-python ../main.py --query "cancer" --source pubmed  # ❌
-```
+Die Datenbank antwortet nicht. Versuche es später noch mal oder nutze einen API-Key.
 
 ---
 
-## 📁 Projekt-Struktur
+## 📁 Projektstruktur
 
-```text
-scientific_research/
-├── README.md                    # Englische Hauptdoku
-├── README_DE.md                 # Diese Datei (Deutsche Doku)
-├── INSTALL.md                   # Installationsanleitung
-├── QUERIES.md                   # Anfrage-Syntax Referenz
-├── CONTRIBUTING.md              # Beitrags-Richtlinien
-├── GITHUB_SETUP.md              # GitHub Einrichtung
-├── PROJECT_OVERVIEW.md          # Datei-Struktur Übersicht
-├── LICENSE                      # MIT Lizenz
-├── requirements.txt             # Python Dependencies
-├── main.py                      # Hauptskript
-├── config.env.template          # API-Key Template
-├── config.env                   # ← DEINE API-Keys (NICHT auf Git!)
-├── .gitignore                   # Git Konfiguration
-│
-├── src/
-│   ├── __init__.py
-│   │
-│   ├── core/
-│   │   ├── __init__.py
-│   │   ├── query_detector.py    # Anfrage-Typ Erkennung
-│   │   └── query_validator.py   # Anfrage-Validierung
-│   │
-│   ├── databases/
-│   │   ├── __init__.py
-│   │   ├── database_adapter.py  # Basis-Klasse (Abstract)
-│   │   ├── pubmed.py            # PubMed Adapter
-│   │   ├── europe_pmc.py        # Europe PMC Adapter
-│   │   └── cochrane.py          # Cochrane Adapter
-│   │
-│   └── config/
-│       ├── __init__.py
-│       └── settings.py          # Zentrale Konfiguration
-│
-├── logs/                        # ← Generierte Logdateien (NICHT auf Git!)
-│   └── search_2025-12-08.log
-│
-└── output/                      # ← Exportierte Ergebnisse (NICHT auf Git!)
-    ├── results.csv
-    └── results.json
-```
-
-Siehe [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) für detaillierte Datei-Beschreibungen.
-
----
+Siehe **[PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)** für detaillierte Dateistruktur-Dokumentation.
 
 ## 🤝 Mitwirken
 
-Beiträge sind willkommen!
-
-1. Fork das Repository
-2. Feature-Branch erstellen: `git checkout -b feature/neue-funktion`
-3. Änderungen committen: `git commit -am "Feature hinzugefügt"`
-4. Push: `git push origin feature/neue-funktion`
-5. Pull Request erstellen
-
-Weitere Informationen: [CONTRIBUTING.md](CONTRIBUTING.md)
-
----
+Wir freuen uns über Beiträge! Siehe **[CONTRIBUTING.md](CONTRIBUTING.md)** für Richtlinien.
 
 ## 📄 Lizenz
 
-MIT Lizenz - siehe [LICENSE](LICENSE) Datei für Details.
+Dieses Projekt ist unter der MIT-Lizenz lizenziert - siehe **[LICENSE](LICENSE)** Datei für Details.
 
-```
-Copyright (c) 2025 Arnulf Bultmann
+## 📞 Support
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
-
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
-```
+- 📖 Lies die [Dokumentation](https://github.com/yourusername/scientific_research#readme)
+- 🐛 Berichte Bugs via GitHub Issues
+- 💬 Diskutiere Features in GitHub Discussions
 
 ---
 
-## 📞 Support & Kontakt
-
-- **GitHub Issues**: https://github.com/yourusername/scientific_research/issues
-- **Diskussionen**: https://github.com/yourusername/scientific_research/discussions
-- **Email**: arnulf.bultmann@example.com
-
----
-
-## 🙏 Danksagungen
-
-Gebaut mit:
-- [NCBI PubMed API](https://pubmed.ncbi.nlm.nih.gov/)
-- [Europe PMC API](https://europepmc.org/)
-- [Cochrane Library](https://www.cochranelibrary.com/)
-
----
-
-## 🔗 Weitere Ressourcen
-
-### Dokumentation
-- [PubMed Query Language](https://www.ncbi.nlm.nih.gov/books/NBK3827/)
-- [Europe PMC Query Syntax](https://europepmc.org/QueryTipsFAQ)
-- [Advanced PubMed Search](https://pubmed.ncbi.nlm.nih.gov/advanced/)
-
-### Python
-- [Python Virtual Environments](https://docs.python.org/3/tutorial/venv.html)
-- [Requests Library](https://requests.readthedocs.io/)
-- [BioPython](https://biopython.org/)
-
-### Tools
-- [Git & GitHub](https://github.com/)
-- [Python Package Manager (pip)](https://pip.pypa.io/)
-
----
-
-## 💡 Tipps & Best Practices
-
-### Anfragen-Tipps
-
-1. **Spezifisch sein**: Je präziser die Anfrage, desto bessere Ergebnisse
-   ```bash
-   # Gut:
-   python main.py --query "cancer AND immunotherapy AND clinical trial" --limit 50
-   
-   # Weniger gut:
-   python main.py --query "cancer" --limit 50
-   ```
-
-2. **Synonyme nutzen**: Nutze OR um verschiedene Begriffe zu kombinieren
-   ```bash
-   # Besser:
-   python main.py --query "(cancer OR carcinoma OR tumor) AND (therapy OR treatment)"
-   ```
-
-3. **Testen mit kleinem Limit**: Teste erst mit `--limit 5`
-   ```bash
-   python main.py --query "deine-anfrage" --source pubmed --limit 5
-   ```
-
-### Performance-Tipps
-
-1. **API-Keys nutzen**: Mit Keys sind Anfragen schneller
-2. **Kein zu großes Limit**: Sehr große Anfragen können lange dauern
-3. **Logs überprüfen**: Bei Problemen `logs/` überprüfen
-
-### Datenschutz-Tipps
-
-1. **config.env schützen**: Niemals auf GitHub pushen
-2. **Sensitive Daten**: Keine API-Keys in Code schreiben
-3. **.gitignore nutzen**: Schützt automatisch vor Versehentlichem Upload
-
----
-
-## 🚀 Fortgeschrittene Verwendung
-
-### Mit Bash-Script
-
-```bash
-#!/bin/bash
-
-# search.sh - Suchen mit Logging
-
-cd scientific_research
-
-QUERIES=(
-  "(cancer OR tumor) AND immunotherapy"
-  "covid 19 AND vaccine"
-  "machine learning AND medicine"
-)
-
-for query in "${QUERIES[@]}"; do
-  echo "Searching: $query"
-  python main.py \
-    --query "$query" \
-    --source pubmed \
-    --limit 100 \
-    --output "output/results_${query// /_}.csv"
-done
-```
-
-### Mit Python-Script
-
-```python
-import subprocess
-import os
-
-os.chdir('scientific_research')
-
-queries = [
-    "(cancer OR tumor) AND immunotherapy",
-    "covid 19 AND vaccine",
-    "machine learning AND medicine"
-]
-
-for query in queries:
-    cmd = [
-        'python', 'main.py',
-        '--query', query,
-        '--source', 'pubmed',
-        '--limit', '100',
-        '--output', f"output/results_{query.replace(' ', '_')}.csv"
-    ]
-    subprocess.run(cmd)
-```
-
-### Mit Docker (optional zukünftig)
-
-```dockerfile
-FROM python:3.9-slim
-
-WORKDIR /app
-COPY . .
-RUN pip install -r requirements.txt
-
-ENTRYPOINT ["python", "main.py"]
-CMD ["--help"]
-```
-
----
-
-## 📈 Roadmap
-
-Geplante Features:
-- [ ] Web-Interface (Flask/Django)
-- [ ] Datenbank-Integration (SQLite/PostgreSQL)
-- [ ] Automatisierte Searches (Cron-Jobs)
-- [ ] Machine Learning für Query-Optimization
-- [ ] Advanced Filtering & Ranking
-- [ ] Multi-Language Support (DE, FR, ES)
-- [ ] REST API
-- [ ] Docker-Support
-
----
-
-## 🐞 Bekannte Probleme
-
-| Problem | Ursache | Lösung |
-|---------|--------|--------|
-| Keine Ergebnisse | Zu spezifische Anfrage | Anfrage vereinfachen, OR nutzen |
-| Timeout | Server antwortet nicht | Später erneut versuchen |
-| Memory Error | Zu großes Limit | Limit reduzieren (max 1000) |
-| API Error | Ungültiger Key | Key überprüfen |
-| Import Error | Falsches Verzeichnis | Von `scientific_research/` starten |
-
----
-
-## 📊 Statistiken
-
-| Metrik | Wert |
-|--------|------|
-| Unterstützte Datenbanken | 3 |
-| Artikel in PubMed | 34 Mio.+ |
-| Artikel in Europe PMC | 42 Mio.+ |
-| Minimale Python Version | 3.8 |
-| Lizenz | MIT |
-| Code Lines | ~1500 |
-| Dokumentation | ~2500 Zeilen |
-| Unterstützte APIs | 3 (NCBI, EBI, Cochrane) |
-
----
-
-## ✅ Checkliste für erste Nutzung
-
-- [ ] Repository geklont
-- [ ] Verzeichnis: `cd scientific_research`
-- [ ] Python 3.8+ installiert
-- [ ] Virtuelle Umgebung erstellt: `python3 -m venv venv`
-- [ ] venv aktiviert: `source venv/bin/activate`
-- [ ] Requirements installiert: `pip install -r requirements.txt`
-- [ ] config.env.template kopiert: `cp config.env.template config.env`
-- [ ] config.env mit API-Keys gefüllt (optional)
-- [ ] Erste Test-Anfrage: `python main.py --query "cancer" --source pubmed --limit 5`
-- [ ] Logs überprüft: `ls logs/`
-- [ ] Dokumentation gelesen: README.md, INSTALL.md
-- [ ] Alle Tests bestanden
-
----
-
-## 🎉 Gratulationen!
-
-Du hast das **Scientific Research Tool** erfolgreich eingerichtet! 
-
-### Nächste Schritte:
-
-1. **Erste Suche starten**:
-   ```bash
-   python main.py --query "your topic here" --source pubmed --limit 10
-   ```
-
-2. **Mit Export arbeiten**:
-   ```bash
-   python main.py --query "your topic" --source pubmed --limit 100 --output my_results.csv
-   ```
-
-3. **Logs überprüfen**:
-   ```bash
-   tail -f logs/search_*.log
-   ```
-
-4. **Weitere Datenbanken ausprobieren**:
-   ```bash
-   python main.py --query "your topic" --source europepmc --limit 50
-   ```
-
-Viel Erfolg bei deiner Forschung! 🔬
-
----
-
-**Letzte Aktualisierung**: 2025-12-08 | **Version**: 1.0.0 | **Sprache**: Deutsch 🇩🇪 | **Project Root**: `scientific_research`
-
-Entwickelt mit ❤️ für wissenschaftliche Forschung
+**Gebaut mit ❤️ für offene Wissenschaft** 🔬

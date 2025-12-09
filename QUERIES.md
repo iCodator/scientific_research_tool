@@ -204,6 +204,62 @@ python main.py --query "cancer AND ISOPENACCESSY:Y" --source europepmc
 python main.py --query "TITLE_ABSTRACT:(covid OR coronavirus) AND PUBYEAR:2020-2025 AND ISOPENACCESSY:Y" --source europepmc
 ```
 
+## Cochrane Syntax
+
+Cochrane Systematic Reviews werden über die Europe PMC API durchsucht. Die Query-Syntax ist identisch mit Europe PMC, aber es gibt wichtige Besonderheiten:
+
+### Automatische Filterung
+
+Die Cochrane-Suche nutzt automatisch:
+- **Broad search**: `(your_query) AND Cochrane`
+- **Client-side filtering**: Filtert nach Journal-Name, DOI-Präfix (`10.1002/14651858`), Systematic Review im Titel
+
+Das bedeutet: Du kannst normale Query-Syntax nutzen, der Adapter kümmert sich um den Rest!
+
+### Beispiele für Cochrane
+
+```bash
+# Einfache Suche
+python main.py --query "cancer treatment" --source cochrane --limit 10
+
+# Mit Synonymen
+python main.py --query "(heart disease OR cardiac) AND intervention" --source cochrane
+
+# Komplexe Query
+python main.py --query "((diabetes OR glucose intolerance) AND (exercise OR physical activity)) NOT animal" --source cochrane
+
+# Mit Datumbereich (nutzt Europe PMC Syntax)
+python main.py --query "diabetes AND 2020:2025[pdat]" --source cochrane
+```
+
+### Wichtige Hinweise
+
+1. **Keine PubMed Field-Tags!**
+   Cochrane akzeptiert PubMed Field-Tag-Syntax nicht (z.B. `[TitleAbstract]`). Nutze normale Operatoren:
+   ```bash
+   ✅ (diabetes OR glucose) AND exercise
+   ❌ diabetes[TitleAbstract] AND exercise[TitleAbstract]
+   ```
+
+2. **Systematische Reviews nur**
+   Cochrane filtert automatisch nach:
+   - Journal: "Cochrane Database of Systematic Reviews"
+   - DOI-Präfix: `10.1002/14651858`
+   - Titel-Keywords: "systematic review" oder "review"
+   
+   Du musst das nicht manuell machen!
+
+3. **Broad Search Mechanik**
+   Intern wird deine Query erweitert:
+   ```
+   Your Query: (diabetes) AND (exercise OR activity)
+   Internal:   ((diabetes) AND (exercise OR activity)) AND Cochrane
+   ```
+   Das ist absichtlich breit, um False Negatives zu vermeiden.
+
+4. **Keine Volltext-Suche für alle**
+   Cochrane über Europe PMC hat möglicherweise Zugriffsbeschränkungen auf Volltext. Die Tool sucht in indexierten Metadaten (Titel, Abstract, Keywords).
+
 ## Wildcards (Optional)
 
 Manche Datenbanken unterstützen Wildcards für Wort-Varianten:
@@ -289,39 +345,15 @@ python main.py --query "treatment OR therapy" --source pubmed
 # Breite Suche (viele Ergebnisse)
 python main.py --query "cancer" --source pubmed --limit 1000
 
-# Enge Suche (wenige, relevante Ergebnisse)
-python main.py --query "(cancer[TitleAbstract]) AND (immunotherapy[TitleAbstract]) AND (human) AND 2023:2025[pdat]" --source pubmed --limit 50
+# Enge Suche (wenige, präzise Ergebnisse)
+python main.py --query "cancer[TitleAbstract] AND 2023:2025[pdat]" --source pubmed --limit 100
+
+# Mittlere Suche (ausgewogen)
+python main.py --query "(cancer OR tumor) AND (immunotherapy)" --source pubmed --limit 250
 ```
 
-### 4. Ausschlüsse für Präzision
+### 4. Datenbank-Auswahl
 
-```bash
-# Schließe unwanted Ergebnisse aus
-python main.py --query "cancer AND therapy AND NOT animal AND NOT cell AND NOT in-vitro" --source pubmed
-```
-
-## Testing deiner Query
-
-Vor dem großen Export, teste die Query mit kleinem Limit:
-
-```bash
-# Test mit 5 Ergebnissen
-python main.py \
-  --query "deine-query-hier" \
-  --source pubmed \
-  --limit 5 \
-  --verbose
-
-# Wenn Ergebnisse sehen gut aus:
-python main.py \
-  --query "deine-query-hier" \
-  --source pubmed \
-  --limit 100 \
-  --output results.csv
-```
-
-## Weitere Ressourcen
-
-- [PubMed Query Language](https://www.ncbi.nlm.nih.gov/books/NBK3827/)
-- [Europe PMC Query Syntax](https://europepmc.org/QueryTipsFAQ)
-- [Advanced PubMed Search](https://pubmed.ncbi.nlm.nih.gov/advanced/)
+- **PubMed**: Biomedizin, beste für englischsprachige Literatur
+- **Europe PMC**: Breiter, auch Europa, bessere Open-Access-Abdeckung
+- **Cochrane**: Systematische Reviews, beste für Evidence Synthesis

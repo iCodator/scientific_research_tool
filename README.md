@@ -95,6 +95,12 @@ python main.py \
   --limit 100
 ```
 
+### Cochrane Search
+
+```bash
+python main.py --query "cancer AND immunotherapy" --source cochrane --limit 10
+```
+
 ### From Query File
 
 ```bash
@@ -107,11 +113,13 @@ python main.py --query-file my_query.txt --source pubmed --output results.csv
 
 ## 🗄️ Supported Databases
 
-| Database   | Source     | Size            | Syntax                                                              |
-|-----------|------------|-----------------|---------------------------------------------------------------------|
-| **PubMed** | NCBI (USA) | 34M+ articles   | [NCBI Query](https://www.ncbi.nlm.nih.gov/books/NBK3827/)          |
-| **Europe PMC** | EBI (Europe) | 42M+ articles | [Europe PMC](https://europepmc.org/api)                            |
-| **Cochrane** | Cochrane Org | Systematic Reviews | [Cochrane API](https://data.cochrane.org/)                    |
+| Database   | Source     | Size            | Access                                                              |
+|-----------|------------|-----------------|------------------------------------------------------------------------|
+| **PubMed** | NCBI (USA) | 34M+ articles   | [NCBI Query](https://www.ncbi.nlm.nih.gov/books/NBK3827/) via JSON API |
+| **Europe PMC** | EBI (Europe) | 42M+ articles | [Europe PMC API](https://europepmc.org/api)                            |
+| **Cochrane** | Europe PMC¹ | Systematic Reviews | [Europe PMC](https://europepmc.org/api) with Auto-Filter           |
+
+¹ **Note on Cochrane**: Cochrane reviews are accessed via Europe PMC API for maximum reliability. Queries use broad search (`AND Cochrane`) with automatic client-side filtering for precision.
 
 ## 💡 Query Syntax
 
@@ -170,7 +178,7 @@ EUROPEPMC_API_KEY=your_key_here
 ```csv
 title,authors,year,journal,url,abstract
 "Cancer Immunotherapy","Smith J, Jones A",2024,"Nature","https://...",
-"Tumor Mechanism","Brown B",2023,"Cell","https://...","..."
+"Tumor Mechanism","Brown B",2023,"Cell","https://...",
 ```
 
 ### JSON Export
@@ -203,7 +211,7 @@ python main.py --query-file my_query.txt --source pubmed
 # With export
 python main.py --query "cancer" --source pubmed --output results.csv
 
-# Debug mode
+# Debug mode (shows logs in terminal)
 python main.py --query "cancer" --source pubmed --verbose
 
 # Custom limit
@@ -232,7 +240,12 @@ Depends on the database:
 
 ### Where are the logs?
 
-All searches are logged to `logs/search_*.log` automatically.
+All searches are logged to `logs/search_*.log` automatically. Use `--verbose` flag to also see output in terminal.
+
+### How does Cochrane differ from Europe PMC?
+
+- **Europe PMC**: Searches all article types across 42M+ articles
+- **Cochrane**: Filtered specifically for **Systematic Reviews** via automated detection (journal name + DOI prefix + title keywords)
 
 ## 🐛 Troubleshooting
 
@@ -259,65 +272,22 @@ The database is not responding. Try again later or use an API key.
 
 ## 📁 Project Structure
 
-```text
-scientific_research/
-├── README.md                    # This file
-├── README_DE.md                 # German documentation
-├── INSTALL.md                   # Installation guide
-├── QUERIES.md                   # Query syntax reference
-├── CONTRIBUTING.md              # German overview
-├── GITHUB_SETUP.md              # GitHub setup guide
-├── PROJECT_OVERVIEW.md          # File structure overview
-├── LICENSE                      # MIT License
-├── requirements.txt             # Python dependencies
-├── main.py                      # Main script
-├── config.env.template          # API key template
-├── .gitignore                   # Git config
-└── src/
-    ├── __init__.py
-    ├── core/
-    │   ├── __init__.py
-    │   ├── query_detector.py    # Query type detection
-    │   └── query_validator.py   # Query validation
-    ├── databases/
-    │   ├── __init__.py
-    │   ├── database_adapter.py  # Base adapter class
-    │   ├── pubmed.py            # PubMed adapter
-    │   ├── europe_pmc.py        # Europe PMC adapter
-    │   └── cochrane.py          # Cochrane adapter
-    └── config/
-        ├── __init__.py
-        └── settings.py          # Central configuration
-```
-
-See [PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md) for detailed file descriptions.
+See **[PROJECT_OVERVIEW.md](PROJECT_OVERVIEW.md)** for detailed file structure documentation.
 
 ## 🤝 Contributing
 
-Contributions are welcome!
-
-1. Fork the repository
-2. Create a feature branch: `git checkout -b feature/new-feature`
-3. Make changes and commit: `git commit -am "Add new feature"`
-4. Push: `git push origin feature/new-feature`
-5. Create a Pull Request
+We welcome contributions! See **[CONTRIBUTING.md](CONTRIBUTING.md)** for guidelines.
 
 ## 📄 License
 
-MIT License – see [LICENSE](LICENSE) file for details.
+This project is licensed under the MIT License - see **[LICENSE](LICENSE)** file for details.
 
 ## 📞 Support
 
-- **GitHub Issues**: https://github.com/yourusername/scientific_research/issues
-- **Discussions**: https://github.com/yourusername/scientific_research/discussions
-
-## 🙏 Credits
-
-Built with:
-- [NCBI PubMed API](https://pubmed.ncbi.nlm.nih.gov/)
-- [Europe PMC API](https://europepmc.org/)
-- [Cochrane Library](https://www.cochranelibrary.com/)
+- 📖 Read the [documentation](https://github.com/yourusername/scientific_research#readme)
+- 🐛 Report bugs via GitHub Issues
+- 💬 Discuss features in GitHub Discussions
 
 ---
 
-**Last Updated**: 2025-12-08 • **Version**: 1.0.0 • **Project Root**: `scientific_research`
+**Built with ❤️ for open science** 🔬

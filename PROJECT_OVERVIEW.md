@@ -86,13 +86,14 @@ python main.py --query "cancer AND therapy" --source pubmed --limit 100 --output
 **Wer nutzt das**: Anfänger, die Python nicht kennen
 
 #### `QUERIES.md` 📋
-**Was**: Vollständige Query-Syntax Referenz
+**Was**: Vollständige Query-Syntax Referenz mit Cochrane-Dokumentation
 **Inhalt**:
 - Basis-Operatoren (AND, OR, NOT)
 - Syntax-Regeln
-- 20+ Query-Beispiele
+- 40+ Query-Beispiele
 - PubMed Field-Tags
 - Europe PMC Syntax
+- **Cochrane Syntax & Auto-Filterung (NEU!)**
 - Wildcards
 - Häufige Fehler
 - Tipps für bessere Ergebnisse
@@ -114,9 +115,9 @@ python main.py --query "cancer AND therapy" --source pubmed --limit 100 --output
 #### `requirements.txt` 📦
 **Was**: Liste aller Python Dependencies
 **Inhalt**:
-- `requests==2.28.1` - HTTP-Anfragen
-- `biopython==1.81` - Bioinformatik
-- `python-dotenv==0.21.0` - .env-Dateien lesen
+- `requests==2.31.0` - HTTP-Anfragen
+- `biopython==1.84` - Bioinformatik
+- `python-dotenv==1.0.0` - .env-Dateien lesen
 
 **Installation**:
 ```bash
@@ -184,19 +185,24 @@ pip install -r requirements.txt
 **Was**: Adapter für PubMed API
 **Funktion**:
 - Queries an NCBI ESearch senden
-- Ergebnisse von NCBI EFetch holen
+- Ergebnisse von NCBI EFetch holen (JSON API)
 - Results strukturieren
 
 #### `src/databases/europe_pmc.py` 🌍
 **Was**: Adapter für Europe PMC API
 **Funktion**:
 - Queries an Europe PMC senden
-- Results parsen
+- Results parsen (JSON)
 
 #### `src/databases/cochrane.py` 📚
-**Was**: Adapter für Cochrane Library
+**Was**: Adapter für Cochrane Systematic Reviews (via Europe PMC)
 **Funktion**:
-- Systematische Reviews durchsuchen
+- Cochrane Systematic Reviews durchsuchen über Europe PMC API
+- Automatische Filterung nach Cochrane Database (Journal-Name + DOI-Präfix `10.1002/14651858`)
+- Client-Side Filtering für Qualitätskontrolle
+- **Broad Search Mechanik**: `(your_query) AND Cochrane` für maximale Recall
+
+**Wichtig**: Cochrane ist kein separate API mehr. Seitdem Cochrane.org API deprecated ist, nutzen wir Europe PMC als zuverlässige Proxy mit spezifischer Filterung.
 
 ## 🚀 Workflow: Erste Nutzung
 
@@ -247,68 +253,12 @@ pubmed.py
 └── Gibt zurück: List[Dict] (Artikel)
 
 QUERIES.md
-└── Referenziert: query_compiler.py (Beispiele)
-
-INSTALL.md
-└── Referenziert: requirements.txt (Dependencies)
+└── Referenziert: alle Adapter (Query-Syntax Beispiele)
 ```
 
-## 💡 Datei-Checkliste vor GitHub Push
+## 📊 Recent Changes (09.12.2025)
 
-```bash
-# ✅ Alle notwendigen Dateien vorhanden?
-ls -la *.md          # README, INSTALL, QUERIES, CONTRIBUTING, GITHUB_SETUP
-ls -la *.py          # main.py
-ls -la *.txt         # requirements.txt
-ls -la src/          # src/ Verzeichnis
-ls -la .git*         # .gitignore
-
-# ✅ Keine sensiblen Dateien?
-grep -r "APIKEY" .   # Sollte nichts finden
-grep -r "config.env" .gitignore  # Sollte darin sein
-
-# ✅ Alle Dateien mit richtigen Inhalten?
-head -20 main.py     # Sollte #!/usr/bin/env python3 anfangen
-head -20 README.md   # Sollte mit # Scientific Research Tool starten
-```
-
-## 🔐 Geheime Dateien (Sollten NICHT im GitHub sein)
-
-- `config.env` ← DEINE API-KEYS! (in .gitignore)
-- `venv/` ← Virtuelle Umgebung (in .gitignore)
-- `.env` ← Environment Dateien (in .gitignore)
-- `logs/` ← Logdateien (in .gitignore)
-- `output/*.csv` ← Deine exportierten Daten (in .gitignore)
-
-## 📊 Datei-Größen (approximativ)
-
-| Datei | Größe | Typ |
-|-------|-------|-----|
-| README.md | ~15 KB | Dokumentation |
-| INSTALL.md | ~12 KB | Dokumentation |
-| QUERIES.md | ~18 KB | Dokumentation |
-| main.py | ~8 KB | Python Code |
-| requirements.txt | 0.1 KB | Config |
-| src/core/*.py | ~8 KB | Python Code |
-| src/databases/*.py | ~20 KB | Python Code |
-| Gesamt | ~80 KB | Mit Doku |
-
-## 🎯 Zusammenfassung
-
-**Du brauchst hauptsächlich:**
-1. `main.py` - Das Skript das du ausführst
-2. `src/` - Die Datenbank-Adapter
-3. `requirements.txt` - Dependencies
-4. `README.md` - Was ist das Projekt?
-5. `QUERIES.md` - Wie nutze ich es?
-
-**Für GitHub brauchst du zusätzlich:**
-6. `.gitignore` - Was nicht hochladen
-7. `LICENSE` - Lizenz
-8. Alle anderen `.md` Dateien - Dokumentation
-
-**Optional aber empfohlen:**
-9. `.github/workflows/` - Automatisierte Tests
-10. `config.env.template` - API-Key Template
-
-Viel Erfolg! 🚀
+- ✅ PubMed Adapter: JSON API Integration (statt XML)
+- ✅ Cochrane Adapter: Umgestellt auf Europe PMC Proxy mit Broad Search + Client-Side Filtering
+- ✅ Dokumentation: Aktualisiert mit Cochrane Integration Details
+- ✅ QUERIES.md: Neuer "Cochrane Syntax" Abschnitt hinzugefügt
