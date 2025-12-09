@@ -1,71 +1,66 @@
-# Virtual Environment
-venv/
-env/
-ENV/
-.venv
+# Gitignore für Scientific Research Tool
 
-# Python Caches
+# ═══════════════════════════════════════════════════════════════════════════
+# Python-Cache und virtuelle Umgebungen
+# ═══════════════════════════════════════════════════════════════════════════
+
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+env/
+venv/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
 
-# IDE / Editor
+# ═══════════════════════════════════════════════════════════════════════════
+# IDE und Editor
+# ═══════════════════════════════════════════════════════════════════════════
+
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 .DS_Store
-.sublime-project
-.sublime-workspace
 
-# Testing
-.tox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.hypothesis/
-.pytest_cache/
-htmlcov/
+# ═══════════════════════════════════════════════════════════════════════════
+# LOG-VERZEICHNIS - Logs immer ignorieren, Verzeichnis aber committen!
+# ═══════════════════════════════════════════════════════════════════════════
 
-# Environment Variables (WICHTIG - SCHÜTZT DEINE API-KEYS!)
-config.env
-.env
-.env.local
-.env.*.local
+# Alle Log-Dateien ignorieren
+logs/*.log
 
-# Logs
-logs/
-*.log
+# Aber .gitkeep committen, damit Verzeichnis erhalten bleibt
+!logs/.gitkeep
 
-# Output / Daten
-output/
-results/
-/data/
-/output/*.csv
-/output/*.json
+# ═══════════════════════════════════════════════════════════════════════════
+# Output-Verzeichnis - Exportierte Ergebnisse ignorieren
+# ═══════════════════════════════════════════════════════════════════════════
 
-# OS-spezifisch
+output/*.csv
+output/*.json
+!output/.gitkeep
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Query-Dateien - Optional (je nach Projekt)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Beispiel-Queries committen, aber nicht die Testdaten:
+# queries/                    # Queries committen
+# queries/test_queries/       # Test-Queries ignorieren
+
+# ═══════════════════════════════════════════════════════════════════════════
+# OS-spezifische Dateien
+# ═══════════════════════════════════════════════════════════════════════════
+
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-*.bak

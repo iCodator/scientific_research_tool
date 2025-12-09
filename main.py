@@ -1,229 +1,130 @@
+#!/usr/bin/env python3
+
 """
 ═══════════════════════════════════════════════════════════════════════════
-SCIENTIFIC RESEARCH TOOL - Main Entry Point (FIXED VERSION 7)
+MAIN.PY - Scientific Research Tool
 ═══════════════════════════════════════════════════════════════════════════
 
-Zweck:
-------
-Dies ist das Hauptprogramm zum Starten des Scientific Research Tools.
+📚 ÜBERBLICK:
+=============
+Dies ist die Hauptdatei des Scientific Research Tools.
+Sie kümmert sich um:
+1. Kommandozeilen-Argumente (--query, --source, etc.) verarbeiten
+2. Query validieren
+3. Passendem Adapter aufrufen (PubMed, Europe PMC, Cochrane)
+4. Ergebnisse exportieren/anzeigen
 
-FIX V7 (PubMed Optimization):
-✅ NEU: Automatische Tagging-Funktion!
-   Jeder Suchbegriff ohne spezifisches Feld (z.B. [dp] oder [MeSH])
-   bekommt automatisch [Title/Abstract] angehängt.
-   
-   Vorteil:
-   - Verhindert "Automatic Term Mapping" (ATM)
-   - Boolesche Operatoren (NOT, OR) werden korrekt interpretiert.
-   - Benutzer muss nicht mehr manuell [Title/Abstract] tippen.
+VERWENDUNG:
+===========
+python main.py --query-file queries/sehr_komplex.txt --source europepmc --limit 20
+python main.py --query "cancer AND (2020:2025)" --source pubmed --limit 10 --output results.csv
 
-Installation:
---------------
-1. Diesen File als main.py speichern (überschreiben)
-2. Starten: python main.py --help
+QUERY-FORMAT (UNIVERSELL):
+==========================
+((a OR b) AND (c NOT d)) mit Datumsbereichen wie 2020:2025
+
+Der Query-Compiler übersetzt das automatisch für die gewählte Datenbank!
 
 ═══════════════════════════════════════════════════════════════════════════
 """
-
-# ============================================================================
-# IMPORTS
-# ============================================================================
 
 import sys
-import logging
 import argparse
 import re
+import csv
+import json
 from pathlib import Path
 
-# ============================================================================
-# PATH FIX
-# ============================================================================
-PROJECT_ROOT = Path(__file__).resolve().parent
-if str(PROJECT_ROOT) not in sys.path:
-    sys.path.insert(0, str(PROJECT_ROOT))
+# ═══════════════════════════════════════════════════════════════════════════
+# SCHRITT 1: PROJECT ROOT zu Python-Pfad hinzufügen
+# ═══════════════════════════════════════════════════════════════════════════
 
-# Imports
-from src.config.settings import Settings
-from src.databases.pubmed import PubMedAdapter
-from src.databases.europe_pmc import EuropePMCAdapter
-from src.databases.cochrane import CochraneAdapter
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-# ============================================================================
-# LOGGING SETUP
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# SCHRITT 2: Adapter und Utils importieren
+# ═══════════════════════════════════════════════════════════════════════════
 
-def setup_logging():
-    import logging.handlers
-    from datetime import datetime
-    
-    log_dir = Path(Settings.LOG_DIR)
-    log_dir.mkdir(exist_ok=True)
-    
-    log_format = logging.Formatter(
-        '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    )
-    
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    
-    log_file = log_dir / f"search_{datetime.now().strftime('%Y-%m-%d')}.log"
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(log_format)
-    
-    console_handler = logging.StreamHandler()
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(log_format)
-    
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-    
-    return logger
+try:
+    from src.databases.pubmed import PubMedAdapter
+    from src.databases.europe_pmc import EuropePMCAdapter
+    from src.databases.cochrane import CochraneAdapter
+    from src.core.query_compiler import QueryCompiler
+    from src.core.logging_manager import LoggingManager
+except ModuleNotFoundError as e:
+    print(f"❌ Import Error: {e}")
+    print(f"Stelle sicher, dass du von PROJECT ROOT ausführst:")
+    print(f" cd {PROJECT_ROOT}")
+    print(f" python main.py --query-file query.txt ...")
+    sys.exit(1)
 
-# ============================================================================
-# CORE FUNCTIONS
-# ============================================================================
+# ═══════════════════════════════════════════════════════════════════════════
+# HILFSFUNKTIONEN
+# ═══════════════════════════════════════════════════════════════════════════
 
-def clean_query_string(raw_query: str) -> str:
-    """
-    Reinigt den Query-String von überflüssigen Leerzeichen.
-    """
-    clean = re.sub(r'\s+', ' ', raw_query)
-    return clean.strip()
-
-def optimize_pubmed_query(query: str) -> str:
-    """
-    Fügt automatisch [Title/Abstract] zu Begriffen hinzu, die kein Feld haben.
-    Ausnahme: Operatoren (AND, OR, NOT) und bereits getaggte Begriffe.
-    """
-    # 1. Zerteile Query in Token (Wörter, Klammern, Operatoren, "Phrasen")
-    # Regex Erklärung: 
-    # - ".*?" -> Erfasst Phrasen in Anführungszeichen
-    # - \[.*?\] -> Erfasst bereits existierende Tags wie [dp]
-    # - \(|\) -> Erfasst Klammern
-    # - \S+ -> Erfasst einzelne Wörter
-    tokens = re.findall(r'".*?"|\[.*?\]|\(|\)|\S+', query)
-    
-    optimized_tokens = []
-    
-    # Liste der geschützten Wörter (Operatoren & Syntax)
-    reserved_keywords = {'AND', 'OR', 'NOT', '(', ')'}
-    
-    for i, token in enumerate(tokens):
-        # Fall 1: Ist es ein reserviertes Wort oder Klammer? -> Lassen
-        if token in reserved_keywords:
-            optimized_tokens.append(token)
-            continue
-            
-        # Fall 2: Ist es ein Datum (Jahreszahl:Jahreszahl)? -> [dp] anhängen wenn fehlt
-        if re.match(r'^\d{4}:\d{4}$', token):
-            optimized_tokens.append(f"{token}[dp]")
-            continue
-            
-        # Fall 3: Hat das Token schon ein Tag? (z.B. "cancer"[MeSH]) -> Lassen
-        # Wir prüfen, ob das nächste Token im Original-String ein Tag war
-        # Aber einfacher: Wir schauen, ob das Token selbst mit ] endet (für Tags wie [MeSH])
-        # Oder ob das NÄCHSTE Token in der Liste ein Tag ist (z.B. cancer [MeSH])
-        # Hier vereinfachen wir: Wenn das Token selbst kein Tag enthält.
+def load_query(filepath: str, logger) -> str:
+    """Lädt Query aus Datei"""
+    try:
+        file_path = Path(filepath)
+        if not file_path.exists():
+            file_path = PROJECT_ROOT / filepath
         
-        if '[' in token and ']' in token:
-            optimized_tokens.append(token)
-            continue
-            
-        # Fall 4: Ist es ein Tag selbst? (z.B. [dp]) -> Lassen
-        if token.startswith('[') and token.endswith(']'):
-            optimized_tokens.append(token)
-            continue
-            
-        # Fall 5: Normales Wort oder Phrase -> [Title/Abstract] anhängen
-        # Aber Achtung: Wenn das nächste Token ein Tag ist, dürfen wir nix anhängen!
-        # Das ist hier im einfachen Regex-Split schwer zu sehen.
+        with open(file_path, 'r', encoding='utf-8') as f:
+            query = f.read().strip()
         
-        # Bessere Strategie: Wir nutzen eine Funktion, die nur rohe Begriffe ersetzt.
-        # Aber um sicherzugehen, machen wir es hier "konservativ":
-        # Wenn es eine Phrase in "..." ist, hängen wir es an.
-        # Wenn es ein normales Wort ist, hängen wir es an.
+        logger.info(f"📂 Query aus Datei geladen: {file_path}")
+        return query
         
-        optimized_tokens.append(f"{token}[Title/Abstract]")
+    except FileNotFoundError:
+        logger.error(f"❌ Datei nicht gefunden: {filepath}")
+        sys.exit(1)
 
-    # Zusammenbauen
-    return ' '.join(optimized_tokens)
 
-def smart_query_optimizer(query: str, source: str) -> str:
-    """
-    Entscheidet, ob die Query optimiert werden soll.
-    Nur für PubMed sinnvoll, da EuropePMC/Cochrane andere Syntax haben.
-    """
-    logger = logging.getLogger(__name__)
+def validate_query_syntax(query: str, logger) -> bool:
+    """Validiert die Query-Syntax"""
     
-    if source == 'pubmed':
-        # Da ein vollwertiger Parser komplex ist, nutzen wir hier einen 
-        # sichereren Regex-Ansatz, um NICHT getaggte Begriffe zu finden.
-        
-        # Schritt 1: Identifiziere Begriffe, die KEIN Tag haben und KEIN Operator sind
-        # Das ist mit Regex tricky. Einfacherer Ansatz für V7:
-        # Wir warnen den User nur, oder wir machen ein einfaches Replacement für "Phrasen".
-        
-        # V7 Implementierung (Sicherer Regex Replace für "Phrasen" ohne Tag):
-        # Sucht nach "irgendwas", dem KEIN [ folgt.
-        
-        new_query = query
-        
-        # 1. Phrasen in Anführungszeichen, denen KEIN '[' folgt
-        # (?<!"[^"]*) -> Negative Lookbehind um sicherzustellen dass wir nicht im String sind (komplex)
-        # Einfacher: Wir iterieren über alle "..." Blöcke
-        
-        def replace_untagged_phrases(match):
-            phrase = match.group(0) # z.B. "lung cancer"
-            # Prüfe, ob danach direkt ein [ kommt (im Originaltext)
-            # Das geht mit re.sub schwer.
-            return f"{phrase}[Title/Abstract]"
-
-        # Wir machen es für den User transparent:
-        # Wir loggen, dass wir [Title/Abstract] als Standard annehmen.
-        # Die echte Logik für automatisches Tagging ist sehr fehleranfällig 
-        # (was ist mit "cancer AND tumor"? -> "cancer"[TiAb] AND "tumor"[TiAb]?)
-        
-        # Aufgrund der Komplexität und Fehleranfälligkeit bei automatischem Rewrite:
-        # Wir implementieren in V7 eine Funktion, die ALLES in ( ) setzt und AND NOT repariert,
-        # aber das automatische Anhängen von [Title/Abstract] an JEDES Wort ist riskant.
-        
-        # STATTDESSEN: Wir korrigieren das AND NOT Problem, indem wir es zu NOT machen.
-        new_query = new_query.replace(" AND NOT ", " NOT ")
-        
-        return new_query
-    
-    return query
-
-# ============================================================================
-# (HINWEIS: Die oben angedachte optimize_pubmed_query war zu riskant für V7.
-#  Stattdessen habe ich 'clean_query_string' verbessert und 'AND NOT' Fix eingebaut.)
-# ============================================================================
-
-
-def validate_query_syntax(query: str) -> bool:
-    logger = logging.getLogger(__name__)
-    if not query or len(query.strip()) < 2:
-        logger.error("❌ Query ist leer oder zu kurz!")
+    # PRÜFUNG 1: Sind Klammern balanciert?
+    if query.count('(') != query.count(')'):
+        logger.error("❌ Klammern nicht balanciert")
+        logger.error("   Beispiel OK:    (cancer OR tumor) AND (2020:2025)")
+        logger.error("   Beispiel FALSCH: (cancer OR tumor AND (2020:2025)")
         return False
-    opening_brackets = query.count('(')
-    closing_brackets = query.count(')')
-    if opening_brackets != closing_brackets:
-        logger.error(f"❌ Klammern nicht balanciert! {opening_brackets} vs {closing_brackets}")
+    
+    # PRÜFUNG 2: Prüfe auf Fragen-Markierungen (?)
+    if query.rstrip().endswith('?'):
+        logger.error("❌ Fragen (mit ?) nicht erlaubt - nutze strukturierte Query")
+        logger.error("   Falsch:  'Wirksamkeit von...?'")
+        logger.error("   Richtig: '(Wirksamkeit) AND (Akupunktur)'")
         return False
+    
+    # PRÜFUNG 3: Prüfe auf natürlichsprachige Satzstrukturen
+    suspicious_patterns = [
+        r'\bwelche\b.*\brolle\b',
+        r'\bwirksamkeit\s+von\b',
+        r'\beffektivität\s+von\b',
+        r'\bsuche\s+nach\b',
+        r'\buntersuchung\s+der\b',
+        r'\bfunktion\s+von\b',
+    ]
+    
+    query_lower = query.lower()
+    for pattern in suspicious_patterns:
+        if re.search(pattern, query_lower):
+            logger.error(f"❌ Natürlichsprachige Satzstruktur erkannt")
+            logger.error(f"   Nutze stattdessen: (Begriff1 AND Begriff2) oder (Begriff1 OR Begriff2)")
+            return False
+    
+    # Alles ok!
+    logger.info("✓ Query-Format ist korrekt")
+    logger.info("  Operatoren: AND, OR, NOT")
+    logger.info("  Struktur: (Begriff1 OR Begriff2) AND (Begriff3)")
+    logger.info("  Beispiel: ((cancer OR tumor) AND (2020:2025)) NOT mouse")
     return True
 
 
-def search(query: str, source: str, limit: int) -> list:
-    logger = logging.getLogger(__name__)
-    
-    # === V7 OPTIMIERUNG ===
-    # Ersetze AND NOT durch NOT (PubMed mag AND NOT oft nicht)
-    if source == 'pubmed':
-        if " AND NOT " in query:
-            logger.info("🔧 Optimiere Query: 'AND NOT' -> 'NOT' für PubMed")
-            query = query.replace(" AND NOT ", " NOT ")
-    # ======================
+def search(query: str, source: str, limit: int, logger) -> list:
+    """Führt die Suche durch"""
     
     logger.info(f"\n{'='*80}")
     logger.info(f"STARTE SUCHE")
@@ -232,208 +133,208 @@ def search(query: str, source: str, limit: int) -> list:
     logger.info(f"Quelle: {source.upper()}")
     logger.info(f"Limit: {limit} Artikel")
     
-    adapters = {
-        'pubmed': PubMedAdapter,
-        'europepmc': EuropePMCAdapter,
-        'cochrane': CochraneAdapter,
-    }
-    
-    if source not in adapters:
+    # Wähle Adapter
+    if source.lower() == "pubmed":
+        adapter = PubMedAdapter()
+    elif source.lower() == "europepmc":
+        adapter = EuropePMCAdapter()
+    elif source.lower() == "cochrane":
+        adapter = CochraneAdapter()
+    else:
         logger.error(f"❌ Unbekannte Quelle: {source}")
-        return []
+        logger.error(f"   Akzeptiert: pubmed, europepmc, cochrane")
+        sys.exit(1)
     
-    adapter = adapters[source]()
     logger.info(f"✓ {source.upper()}-Adapter initialisiert")
     
+    # Kompiliere Query
+    compiler = QueryCompiler(query)
+    compiled_query = compiler.compile_for_source(source)
+    
+    # Führe Suche durch
     try:
-        results = adapter.search(query, limit=limit)
+        results = adapter.search(compiled_query, limit=limit)
         logger.info(f"✓ Suche abgeschlossen: {len(results)} Artikel gefunden")
         return results
+        
     except Exception as e:
-        logger.error(f"❌ Fehler bei der Suche: {e}")
+        logger.error(f"❌ Fehler bei Suche: {e}")
+        import traceback
+        logger.debug(traceback.format_exc())
         return []
 
 
-def export_results(results: list, output_file: str, source: str) -> None:
-    logger = logging.getLogger(__name__)
+def export_results(results: list, filepath: str, logger) -> None:
+    """Exportiert Ergebnisse in CSV oder JSON"""
     
     if not results:
         logger.warning("⚠️ Keine Ergebnisse zum Exportieren")
         return
     
-    # Auto-Naming
-    output_path = Path(output_file)
-    file_stem = output_path.stem
-    file_suffix = output_path.suffix
-    new_filename = f"{source}_{file_stem}{file_suffix}"
-    logger.info(f"📝 Dateiname angepasst: {new_filename}")
+    # Erstelle Zielordner
+    output_path = Path(filepath)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
     
-    # Auto-Directory
-    output_path = Path(new_filename)
-    if output_path.parent == Path('.'):
-        output_dir = PROJECT_ROOT / 'output'
-        output_dir.mkdir(exist_ok=True)
-        output_path = output_dir / output_path.name
-        logger.info(f"📁 Speichern in output-Verzeichnis: {output_path}")
+    if filepath.endswith('.csv'):
+        with open(filepath, 'w', newline='', encoding='utf-8') as f:
+            fieldnames = results[0].keys()
+            writer = csv.DictWriter(f, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(results)
+        logger.info(f"✓ Ergebnisse als CSV exportiert: {filepath}")
+        
+    elif filepath.endswith('.json'):
+        with open(filepath, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        logger.info(f"✓ Ergebnisse als JSON exportiert: {filepath}")
+        
     else:
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-    
-    if str(output_path).endswith('.csv'):
-        import csv
-        try:
-            with open(output_path, 'w', newline='', encoding='utf-8') as f:
-                fieldnames = [
-                    'id', 'title', 'authors', 'year', 'journal', 
-                    'doi', 'source', 'url', 'abstract'
-                ]
-                writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction='ignore')
-                writer.writeheader()
-                writer.writerows(results)
-            logger.info(f"✓ Exportiert als CSV: {output_path}")
-            print(f"\n✓ Ergebnisse gespeichert: {output_path}")
-        except Exception as e:
-            logger.error(f"❌ Fehler beim CSV-Export: {e}")
-    
-    elif str(output_path).endswith('.json'):
-        import json
-        try:
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(results, f, indent=2, ensure_ascii=False)
-            logger.info(f"✓ Exportiert als JSON: {output_path}")
-            print(f"\n✓ Ergebnisse gespeichert: {output_path}")
-        except Exception as e:
-            logger.error(f"❌ Fehler beim JSON-Export: {e}")
-    else:
-        logger.error(f"❌ Unbekanntes Format: {output_path}")
+        logger.warning(f"⚠️ Unbekanntes Format: {filepath}")
+        logger.warning(f"   Akzeptiert: .csv oder .json")
 
-
-def print_results(results: list, max_show: int = 5) -> None:
-    logger = logging.getLogger(__name__)
-    if not results:
-        logger.info("❌ Keine Ergebnisse zum Anzeigen")
-        return
-    
-    logger.info(f"\n{'='*80}")
-    logger.info(f"ERGEBNISSE ({len(results)} Artikel total):")
-    logger.info(f"{'='*80}\n")
-    
-    for i, article in enumerate(results[:max_show], 1):
-        logger.info(f"{i}. {article.get('title', 'N/A')}")
-        logger.info(f"   Autoren: {article.get('authors', 'N/A')}")
-        logger.info(f"   Jahr: {article.get('year', 'N/A')}")
-        logger.info(f"   Journal: {article.get('journal', 'N/A')}")
-        logger.info("")
-    
-    if len(results) > max_show:
-        logger.info(f"... und {len(results) - max_show} weitere Artikel")
-
-# ============================================================================
-# MAIN
-# ============================================================================
 
 def main():
-    logger = logging.getLogger(__name__)
+    """Hauptprogramm"""
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # Parse Kommandozeilen-Argumente ZUERST
+    # ═══════════════════════════════════════════════════════════════════
     
     parser = argparse.ArgumentParser(
-        description='🔬 Scientific Research Tool - Suche in PubMed, Europe PMC, Cochrane',
+        description="Scientific Research Tool - Formatierte Queries mit automatischem Query-Compiler",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
-Beispiele:
-  # Query aus Datei lesen (NEU!)
-  python main.py --query-file queries/komplex_test.txt --source pubmed
+ERLAUBTE Query-Formate (UNIVERSELL - Compiler übersetzt automatisch):
 
-  # Query direkt eingeben
-  python main.py --query "cancer" --source pubmed
+✓ (female OR woman) AND masturbation
+✓ (squirting) AND (successful OR effective)
+✓ ((cancer OR tumor) AND (2020:2025)) NOT mouse
+✓ covid 19 OR influenza
+✓ "Coenzym Q10" AND mitochondria
+
+NICHT ERLAUBT:
+
+✗ "Welche Rolle spielt Coenzym Q10?"
+✗ "Wirksamkeit von Akupunktur bei Rückenschmerzen"
+✗ "Ist squirting erfolgreicher als Geschlechtsverkehr?"
+
+BEISPIELE:
+
+python main.py --query-file queries/sehr_komplex.txt --source europepmc --limit 20
+python main.py --query "cancer AND (2020:2025)" --source pubmed --limit 10 --output result.csv
+python main.py --query-file query.txt --source cochrane --limit 50 --verbose
+
         """
     )
     
-    # === NEU: Entweder --query ODER --query-file ===
-    search_group = parser.add_mutually_exclusive_group(required=True)
-    
-    search_group.add_argument(
-        '--query',
-        type=str,
-        help='Suchanfrage direkt als Text'
-    )
-    
-    search_group.add_argument(
-        '--query-file',
-        type=str,
-        help='Pfad zu einer Textdatei, die die Suchanfrage enthält'
-    )
-    # ===============================================
-    
-    parser.add_argument('--source', type=str, choices=['pubmed', 'europepmc', 'cochrane'], default='pubmed')
-    parser.add_argument('--limit', type=int, default=25)
-    parser.add_argument('--output', type=str)
-    parser.add_argument('--verbose', action='store_true')
+    parser.add_argument('--query', type=str,
+                       help='Universelle Query direkt als String')
+    parser.add_argument('--query-file', type=str,
+                       help='Universelle Query aus Textdatei laden')
+    parser.add_argument('--source', type=str, default='pubmed',
+                       choices=['pubmed', 'europepmc', 'cochrane'],
+                       help='Datenbank (default: pubmed)')
+    parser.add_argument('--limit', type=int, default=25,
+                       help='Maximale Anzahl Artikel (default: 25)')
+    parser.add_argument('--output', type=str,
+                       help='Exportiere Ergebnisse in Datei (.csv oder .json)')
+    parser.add_argument('--verbose', action='store_true',
+                       help='Verbose Logging (DEBUG Level)')
     
     args = parser.parse_args()
     
-    # Logging Level
+    # ═══════════════════════════════════════════════════════════════════
+    # Initialisiere LoggingManager mit der gewählten Datenbank
+    # ═══════════════════════════════════════════════════════════════════
+    
+    log_manager = LoggingManager(args.source)
+    logger = log_manager.get_logger(__name__)
+    
+    # Aktiviere Verbose-Mode falls gewünscht
     if args.verbose:
-        for handler in logger.handlers:
-            if isinstance(handler, logging.StreamHandler):
-                handler.setLevel(logging.DEBUG)
-        logger.info("🔍 Debug-Mode aktiviert")
+        log_manager.set_verbose(True)
     
-    # === NEU: Query laden ===
+    # ═══════════════════════════════════════════════════════════════════
+    # Lade Query
+    # ═══════════════════════════════════════════════════════════════════
+    
+    logger.info("\n" + "="*80)
+    logger.info("SCIENTIFIC RESEARCH TOOL")
+    logger.info("="*80 + "\n")
+    
     if args.query_file:
-        try:
-            file_path = Path(args.query_file)
-            if not file_path.exists():
-                logger.error(f"❌ Datei nicht gefunden: {file_path}")
-                sys.exit(1)
-            
-            # Datei lesen (utf-8)
-            with open(file_path, 'r', encoding='utf-8') as f:
-                raw_content = f.read()
-                
-            # FIX V6: Sauber Reinigen mit Regex!
-            query = clean_query_string(raw_content)
-                
-            logger.info(f"📂 Query aus Datei geladen: {args.query_file}")
-            
-        except Exception as e:
-            logger.error(f"❌ Fehler beim Lesen der Datei: {e}")
-            sys.exit(1)
+        query = load_query(args.query_file, logger)
+    elif args.query:
+        query = args.query
+        logger.info(f"📝 Query aus Kommandozeile: {query[:80]}...")
     else:
-        # Auch direkte Eingaben reinigen (Schadet nie)
-        query = clean_query_string(args.query)
-
-    # Validierung
-    if not validate_query_syntax(query):
-        sys.exit(1)
-        
-    try:
-        Settings.validate()
-    except ValueError:
+        logger.error("❌ Bitte --query oder --query-file angeben")
+        parser.print_help()
         sys.exit(1)
     
-    # Suche (nutzt jetzt die saubere 'query' Variable)
-    results = search(query, args.source, args.limit)
-    
-    if not results:
-        logger.warning("⚠️ Keine Ergebnisse gefunden")
-        sys.exit(0)
-    
-    # Export
-    if args.output:
-        export_results(results, args.output, args.source)
-    else:
-        print_results(results)
+    # ═══════════════════════════════════════════════════════════════════
+    # Validiere Query
+    # ═══════════════════════════════════════════════════════════════════
     
     logger.info(f"\n{'='*80}")
+    logger.info("QUERY-VALIDIERUNG")
+    logger.info(f"{'='*80}")
+    
+    if not validate_query_syntax(query, logger):
+        logger.error("\n❌ Query-Validierung fehlgeschlagen!")
+        logger.error("Struktur: (Begriff1 OR Begriff2) AND (Begriff3)")
+        logger.error("Fachbegriffe sind OK: squirting, covid 19, Coenzym Q10")
+        sys.exit(1)
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # Führe Suche durch
+    # ═══════════════════════════════════════════════════════════════════
+    
+    results = search(query, args.source, args.limit, logger)
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # Exportiere oder zeige Ergebnisse
+    # ═══════════════════════════════════════════════════════════════════
+    
+    if args.output:
+        # Füge Datenbank-Präfix hinzu
+        if not args.output.startswith('output/'):
+            filename = f"{args.source}_{args.output}"
+            output_file = f"output/{filename}"
+        else:
+            output_file = args.output
+        
+        logger.info(f"\n{'='*80}")
+        logger.info("EXPORTIERE ERGEBNISSE")
+        logger.info(f"{'='*80}")
+        logger.info(f"Zieldatei: {output_file}")
+        
+        export_results(results, output_file, logger)
+    else:
+        # Zeige Ergebnisse im Terminal
+        if results:
+            logger.info(f"\n{'='*80}")
+            logger.info(f"ERGEBNISSE ({len(results)} Artikel)")
+            logger.info(f"{'='*80}\n")
+            
+            for i, result in enumerate(results[:5], 1):
+                logger.info(f"{i}. {result.get('title', 'N/A')}")
+                logger.info(f"   Authors: {result.get('authors', 'N/A')}")
+                logger.info(f"   Year: {result.get('year', 'N/A')}")
+                logger.info(f"   DOI: {result.get('doi', 'N/A')}")
+    
+    # ═══════════════════════════════════════════════════════════════════
+    # Programm erfolgreich beendet
+    # ═══════════════════════════════════════════════════════════════════
+    
+    logger.info("="*80)
     logger.info("✓ ERFOLGREICH ABGESCHLOSSEN")
-    logger.info(f"{'='*80}\n")
+    logger.info("="*80)
 
+
+# ═══════════════════════════════════════════════════════════════════════════
+# ENTRY POINT
+# ═══════════════════════════════════════════════════════════════════════════
 
 if __name__ == "__main__":
-    try:
-        logger = setup_logging()
-        main()
-    except KeyboardInterrupt:
-        sys.exit(130)
-    except Exception as e:
-        logger.exception(f"🔴 KRITISCHER FEHLER: {e}")
-        sys.exit(1)
+    main()
