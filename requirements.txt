@@ -1,3 +1,64 @@
-requests==2.28.1
-biopython==1.81
-python-dotenv==0.21.0
+# ============================================================================
+# requirements.txt - AKTUALISIERT & STABIL
+# ============================================================================
+# Diese Datei definiert alle Python-Abhängigkeiten für das Scientific Research Tool
+# 
+# WICHTIG: Installiere mit:
+#   pip install -r requirements.txt
+#
+# Bei Problemen aktualisiere pip:
+#   pip install --upgrade pip
+# ============================================================================
+
+# ============================================================================
+# HTTP-Requests & Netzwerk (für API-Kommunikation)
+# ============================================================================
+# requests: Macht HTTP-Anfragen zu PubMed und Europe PMC
+# Version 2.31.0 ist die neueste stabile Version (März 2024)
+requests==2.31.0
+
+# ============================================================================
+# Bioinformatik & Datenverarbeitung
+# ============================================================================
+# biopython: Tools für biologische Sequenzanalyse
+# Version 1.81 war älter, aktuell ist 1.84 (mit Performance-Verbesserungen)
+biopython==1.84
+
+# ============================================================================
+# Umgebungsvariablen & Konfiguration
+# ============================================================================
+# python-dotenv: Lädt .env-Dateien für API-Keys
+# Version 1.0.0 ist die aktuelle Hauptversion
+python-dotenv==1.0.0
+
+# ============================================================================
+# OPTIONAL: Testing & Entwicklung (nicht erforderlich für Production)
+# ============================================================================
+# pytest: Test-Framework (wenn du Unit-Tests schreiben willst)
+# pytest==7.4.3
+
+# ============================================================================
+# OPTIONAL: Protokollierung & Debugging
+# ============================================================================
+# colorlog: Macht Log-Output farbig (schöner zu lesen)
+# colorlog==6.8.0
+
+# ============================================================================
+# Installationsinstruktionen
+# ============================================================================
+# 1. Stelle sicher, dass du Python 3.8+ installiert hast:
+#    python --version
+#
+# 2. Erstelle eine Virtual Environment (empfohlen):
+#    python -m venv venv
+#    source venv/bin/activate  # On Windows: venv\Scripts\activate
+#
+# 3. Installiere alle Abhängigkeiten:
+#    pip install -r requirements.txt
+#
+# 4. Überprüfe die Installation:
+#    python -c "import requests; import biopython; print('✓ OK')"
+#
+# 5. Starte das Tool:
+#    python main.py --help
+# ============================================================================
