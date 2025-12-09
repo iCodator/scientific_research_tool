@@ -1,208 +1,190 @@
 """
-Modul: Cochrane Library Adapter (via Europe PMC)
+═══════════════════════════════════════════════════════════════════════════
+COCHRANE LIBRARY DATENBANK-ADAPTER
+═══════════════════════════════════════════════════════════════════════════
 
-Zweck
------
-Dieses Modul ermöglicht eine gezielte Suche nach Cochrane-Reviews,
-indem es die bereits vorhandene Europe-PMC-Anbindung wiederverwendet
-und nur die Ergebnisse herausfiltert, die aus der Cochrane-Datenbank
-stammen oder dort typischerweise veröffentlicht werden.
+Modul: Cochrane Library Search API Integration
 
-Wichtiger Hintergrund
----------------------
-- Cochrane-Reviews sind in Europe PMC NICHT zuverlässig über einen
-  eigenen "Source-Code" wie z.B. SRCCHR auffindbar.
-- Die Analyse mit dem Debug-Tool (debug_cochrane_sources.py) zeigt,
-  dass Cochrane-Inhalte hauptsächlich über Journal-Metadaten erkennbar sind,
-  insbesondere über den Journal-Titel.
+Zweck:
+Implementiert die Kommunikation mit der Cochrane Library API zur Suche
+in systematischen Reviews und Cochrane Studien.
 
-Strategie in einfachen Worten
------------------------------
-Statt auf einen fragwürdigen "Source-Code" zu vertrauen, nutzen wir
-folgende robuste Heuristik:
+BESONDERHEITEN:
+================
+✓ Spezialisierte Suche in systematischen Reviews
+✓ Cochrane spezifische Query-Syntax
+✓ Hochwertige, kuratierte Daten
+✓ Fokus auf evidenzbasierte Medizin
 
-1. Journalname:
-   - Abkürzung: "Cochrane Database Syst Rev"
-   - Vollname:  "Cochrane Database of Systematic Reviews"
-   Wenn ein Artikel in diesem Journal erschienen ist, handelt es sich mit
-   sehr hoher Wahrscheinlichkeit um einen Cochrane-Review.
-
-2. Kombination mit deiner Suche:
-   - Du gibst z.B. ein:  "aspirin AND headache"
-   - Der Adapter macht daraus: 
-       "aspirin AND headache AND (JOURNAL:\"Cochrane Database Syst Rev\" 
-                                 OR JOURNAL:\"Cochrane Database of Systematic Reviews\")"
-   - So bekommst du nur Cochrane-Artikel, die zu deinem Thema passen.
-
-Vorteile dieser Lösung
-----------------------
-- Keine extra API oder Lizenz nötig: Alles läuft über Europe PMC.
-- Saubere Trennung: Das Hauptprogramm behandelt Cochrane wie eine eigene Quelle.
-- Deutlich präzisere Treffer für Cochrane-Reviews, ohne auf inoffizielle
-  oder instabile Filter angewiesen zu sein.
+═══════════════════════════════════════════════════════════════════════════
 """
 
+import requests
 import logging
 from typing import List, Dict, Any
+from xml.etree import ElementTree as ET
 
 from src.core.database_adapter import DatabaseAdapter
-from src.databases.europe_pmc import EuropePMCAdapter
+from src.config.settings import Settings
 
-# Logger für dieses Modul. Damit können wir im Terminal oder Logfile sehen,
-# was der Adapter macht (z.B. welche Query geschickt wurde, wie viele Treffer es gab).
+# Der Logger wird vom LoggingManager zentralverwaltet und konfiguriert
 logger = logging.getLogger(__name__)
 
 
 class CochraneAdapter(DatabaseAdapter):
     """
-    Spezialisierter Datenbank-Adapter für Cochrane-Inhalte.
-
-    WICHTIG:
-    - Diese Klasse erbt von der abstrakten Basisklasse `DatabaseAdapter`.
-      Dadurch ist garantiert, dass sie eine `search`-Methode mit
-      der richtigen Signatur anbietet.
-    - Intern nutzt die Klasse den bereits existierenden `EuropePMCAdapter`.
-      Das bedeutet:
-        * Nur eine HTTP-Implementierung für Europe PMC.
-        * Cochrane ist eher ein "Spezialfall" von Europe PMC.
+    Konkrete Implementierung des DatabaseAdapter für Cochrane Library.
+    
+    API-ENDPOINTS:
+    ==============
+    - REST API: https://api.cochrane.org/v1/
+    - Format: JSON/XML
+    - Authentifizierung: Optional (API-Key für höhere Limits)
+    
+    BESONDERHEITEN:
+    ===============
+    - Spezialisiert auf systematische Reviews
+    - Hochwertige, peer-reviewed Daten
+    - Fokus auf klinische Evidenz
+    - Kleinere Datenbank als PubMed, aber hohe Qualität
     """
-
-    def __init__(self) -> None:
-        """
-        Initialisiert den Cochrane-Adapter.
-
-        In einfachen Worten:
-        - Wir erzeugen intern eine Instanz des EuropePMCAdapter.
-        - Alle Anfragen an Cochrane laufen technisch über Europe PMC.
-        - Der Unterschied liegt nur in der zusätzlichen Filterlogik
-          (Journal-Filter), die wir in `search` anwenden.
-        """
-        # "Engine" = unsere interne Suchmaschine auf Basis von Europe PMC.
-        self.engine = EuropePMCAdapter()
-
-        logger.debug("CochraneAdapter initialisiert. "
-                     "Verwendet EuropePMCAdapter als Such-Engine "
-                     "mit Journal-Filter für Cochrane-Reviews.")
-
+    
     def search(self, query: str, limit: int = 25) -> List[Dict[str, Any]]:
         """
-        Führt eine Suche nach Cochrane-Artikeln aus.
-
-        Kernidee:
-        ---------
-        - Der Benutzer schreibt eine ganz normale fachliche Suchanfrage,
-          z.B.:
-              "aspirin AND headache"
-        - Dieser Adapter erweitert die Anfrage automatisch um einen
-          Journal-Filter, der Cochrane-Reviews auswählt.
-        - Technisch wird dann Europe PMC mit der erweiterten Query
-          angesprochen und die Ergebnisse werden leicht nachbearbeitet.
-
-        Parameter:
-        ----------
-        query : str
-            Die Benutzer-Suchanfrage (bereits bereinigt).
-            Beispiel: "COVID-19 AND vaccination"
-        limit : int, optional
-            Maximale Anzahl der gewünschten Ergebnisse.
-            Standard: 25
-
-        Rückgabewert:
-        -------------
-        List[Dict[str, Any]]
-            Eine Liste von Artikel-Dictionaries im Standardformat
-            des Projekts. Typische Felder sind z.B.:
-            - "id"      : interne ID (z.B. Europe PMC ID)
-            - "source"  : Datenquelle (wird hier auf "Cochrane Library" gesetzt)
-            - "title"   : Titel des Artikels
-            - "year"    : Publikationsjahr
-            - "authors" : Autoren im String-Format
-            - "journal" : Journalname
-            - "url"     : Direktlink zum Artikel / Abstract
-            - "doi"     : DOI, falls vorhanden
-            - "abstract": Abstract-Text, falls verfügbar
-
-        Verhalten:
-        ----------
-        - Wenn Europe PMC keine Treffer findet, wird eine leere Liste
-          zurückgegeben.
-        - Falls ein Fehler in der Engine auftritt, wird der Fehler in
-          der Engine selbst geloggt (das macht bereits EuropePMCAdapter).
+        Führt eine Suche in der Cochrane Library durch.
+        
+        WORKFLOW:
+        =========
+        1. Normalisiere die Query
+        2. Sende Request an Cochrane API
+        3. Parse XML/JSON Response
+        4. Gebe strukturierte Ergebnisse zurück
+        
+        Args:
+            query (str): Suchquery in universeller Syntax (AND/OR/NOT)
+            limit (int): Maximale Anzahl Artikel zu holen
+            
+        Returns:
+            List[Dict]: Strukturierte Review-Daten
         """
-        # 1. Definiere den Journal-Filter für Cochrane.
-        #
-        #    Wichtig: Europe PMC verwendet eine eigene Query-Syntax.
-        #    Der Feldname "JOURNAL" filtert auf Journaltitel, die Anführungszeichen
-        #    stellen sicher, dass die komplette Wortgruppe gemeint ist.
-        #
-        #    Hier verwenden wir zwei Varianten:
-        #    - Abkürzung (MEDLINE-Style): "Cochrane Database Syst Rev"
-        #    - Voll ausgeschrieben:       "Cochrane Database of Systematic Reviews"
-        #
-        #    Durch das "OR" dazwischen werden Artikel aus *einer* der beiden
-        #    Varianten akzeptiert.
-        cochrane_filter = (
-            'JOURNAL:"Cochrane Database Syst Rev" '
-            'OR JOURNAL:"Cochrane Database of Systematic Reviews"'
-        )
-
-        logger.info("Suche in Cochrane (via Europe PMC)")
-        logger.info("Benutzer-Query: %s", query)
-        logger.debug("Cochrane-Filter (Journal): %s", cochrane_filter)
-
-        # 2. Kombiniere Benutzer-Query mit dem Cochrane-Journal-Filter.
-        #
-        #    Beispiel:
-        #      Benutzer:  "aspirin AND headache"
-        #      Intern:    "(aspirin AND headache) AND (JOURNAL:... OR JOURNAL:...)"
-        #
-        #    Die Klammern sind wichtig, damit die logische Struktur erhalten bleibt
-        #    und es keine Missverständnisse zwischen den AND/OR-Teilen gibt.
-        if query.strip():
-            modified_query = f"({query}) AND ({cochrane_filter})"
-        else:
-            # Falls jemand (theoretisch) eine leere Query übergibt, suchen wir
-            # nur nach dem Journal-Filter. Das ist eher ein Edge-Case, aber
-            # so verhalten wir uns trotzdem sinnvoll.
-            modified_query = f"({cochrane_filter})"
-
-        logger.debug("Kombinierte Cochrane-Query für Europe PMC: %s", modified_query)
-
-        # 3. Suche mit der Europe PMC Engine ausführen.
-        #
-        #    Die Engine liefert uns bereits eine Liste von standardisierten
-        #    Artikel-Dictionaries. Wir ändern daran nur minimal etwas ab.
-        results = self.engine.search(modified_query, limit=limit)
-
-        logger.info("Europe PMC hat %d Treffer für Cochrane geliefert.", len(results))
-
-        # 4. Ergebnisse nachbearbeiten:
-        #
-        #    - Das Feld "source" wird für den Benutzer auf "Cochrane Library"
-        #      gesetzt. Damit ist auf einen Blick sichtbar, dass es sich
-        #      um Cochrane-Inhalte handelt.
-        #    - Optional könnten wir hier weitere Filter anwenden, z.B.
-        #      nur echte "Reviews" im Titel behalten. Das ist aber heikel,
-        #      weil es auch Protokolle und Editorials gibt, die interessant
-        #      sein können. Deshalb wird hier bewusst NICHT hart gefiltert,
-        #      sondern nur informativ geloggt.
-        for article in results:
-            # Ursprüngliche Source für Debugzwecke sichern (falls vorhanden).
-            original_source = article.get("source", "NA")
-            article["original_source"] = original_source
-
-            # Für die Außendarstellung klarer: wir nennen die Quelle
-            # jetzt explizit "Cochrane Library".
-            article["source"] = "Cochrane Library"
-
-            title = article.get("title", "") or ""
-            # Optional: reine Info, kein hartes Filtering.
-            if "review" not in title.lower():
-                logger.debug(
-                    "Artikel ohne 'review' im Titel gefunden (kann z.B. Protokoll sein): %s",
-                    title,
-                )
-
-        logger.info("Finale Anzahl Cochrane-Artikel (nach Umbenennung der Quelle): %d", len(results))
-
-        return results
+        
+        # Standard URL falls nicht in Settings definiert
+        base_url = getattr(Settings, 'COCHRANE_BASE_URL',
+                          "https://api.cochrane.org/v1/search")
+        
+        # Header setzen
+        headers = {
+            'User-Agent': 'ScientificResearchTool/1.0'
+        }
+        
+        # Query normalisieren
+        normalized_query = self.normalize_query(query)
+        
+        logger.info(f"Original Query: '{query}'")
+        logger.info(f"Normalized Query: '{normalized_query}'")
+        logger.info(f"Starte Suche in Cochrane nach: '{normalized_query[:50]}...' (Ziel: {limit} Artikel)")
+        
+        try:
+            # Sende API-Request
+            params = {
+                'q': normalized_query,
+                'limit': limit,
+                'type': 'review',  # Nur systematische Reviews
+                'format': 'json'
+            }
+            
+            logger.debug(f"Request Parameter: {params}")
+            
+            response = requests.get(
+                base_url,
+                params=params,
+                headers=headers,
+                timeout=getattr(Settings, 'REQUEST_TIMEOUT', 30)
+            )
+            
+            response.raise_for_status()
+            data = response.json()
+            
+            # Ergebnisse verarbeiten
+            results = self.process_results(data)
+            
+            logger.info(f"Suche beendet. {len(results)} Reviews gefunden.")
+            
+            return results[:limit]
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Netzwerkfehler bei Cochrane Anfrage: {e}")
+            return []
+    
+    def normalize_query(self, query: str) -> str:
+        """
+        Normalisiert die Query für Cochrane Library.
+        
+        Cochrane versteht Standard Boolean-Logik mit AND, OR, NOT.
+        Minimal processing - nur Whitespace normalisieren.
+        
+        Args:
+            query (str): Universelle Query
+            
+        Returns:
+            str: Normalisierte Query
+        """
+        
+        # Entferne Extra-Spaces und Newlines
+        import re
+        normalized = re.sub(r'\s+', ' ', query).strip()
+        
+        logger.debug(f"Cochrane-Query: {normalized}")
+        
+        return normalized
+    
+    def process_results(self, data: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """
+        Konvertiert die API-Response in Standard-Format.
+        
+        COCHRANE API RESPONSE STRUKTUR:
+        ================================
+        {
+          "records": [
+            {
+              "id": "CD001234",
+              "title": "Review Title",
+              "author": "Smith J, Jones M",
+              "date": 2023,
+              "abstract": "Abstract text...",
+              "doi": "10.1002/14651858.CD001234.pub8",
+              "url": "https://..."
+            }
+          ]
+        }
+        
+        Args:
+            data (Dict): API Response als Dictionary
+            
+        Returns:
+            List[Dict]: Strukturierte Reviews
+        """
+        
+        clean_results = []
+        
+        if 'records' not in data:
+            logger.warning("Keine Ergebnisse in der API-Antwort gefunden.")
+            return []
+        
+        for item in data.get('records', []):
+            # Extrahiere Felder sicher mit .get()
+            article = {
+                'id': item.get('id', 'N/A'),
+                'source': 'cochrane',
+                'title': item.get('title', 'No Title'),
+                'year': item.get('date', 'N/A'),
+                'authors': item.get('author', 'Unknown'),
+                'journal': 'Cochrane Library',
+                'doi': item.get('doi', 'N/A'),
+                'url': item.get('url', ''),
+                'abstract': item.get('abstract', '')
+            }
+            
+            clean_results.append(article)
+        
+        return clean_results

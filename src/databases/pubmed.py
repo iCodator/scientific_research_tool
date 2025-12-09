@@ -1,444 +1,333 @@
 """
-Modul: PubMed Datenbank-Adapter
+═══════════════════════════════════════════════════════════════════════════
+PUBMED DATENBANK-ADAPTER
+═══════════════════════════════════════════════════════════════════════════
 
-===============================
+Modul: NCBI PubMed API Integration
 
-Zweck: Implementiert die Kommunikation mit der PubMed REST API (NCBI E-Utilities).
+Zweck:
+Implementiert die Kommunikation mit der NCBI PubMed API zur Suche
+in wissenschaftlichen Publikationen der biomedizinischen Literatur.
 
-PubMed ist die klassische biomedizinische Datenbank des National Center for
-Biotechnology Information (NCBI) der USA.
+BESONDERHEITEN:
+================
+✓ Zugriff auf 34+ Millionen Artikel
+✓ Zwei-Stufen API (ESearch + EFetch)
+✓ XML-basierte Responses
+✓ Umfangreiche Feldtags (TIAB, Title, Abstract, etc.)
+✓ Date-Range Suche unterstützt
 
-API-Dokumentation: https://www.ncbi.nlm.nih.gov/books/NBK25499/
-
-Dieses Modul:
-
-- Erbt vom abstrakten 'DatabaseAdapter' Interface
-- Implementiert die search() Methode
-- Handhabt zwei Schritte: ESearch (IDs holen) + EFetch (Details holen)
-- Parst XML-Antworten (PubMed nutzt XML, nicht JSON)
-- Normalisiert Artikel-Daten in unser Standard-Format
-- Formatiert Autoren für Zotero-Import (Nachname, Vorname)
-- FIXIERT: Extraktion von Titeln mit XML-Tags (z.B. <i>BRAF</i>)
-
-BESONDERHEIT GEGENÜBER EUROPE PMC:
-
-- PubMed nutzt E-Utilities (zwei separate API-Calls pro Suche)
-- Response-Format ist XML (nicht JSON)
-- Pagination unterscheidet sich (retstart/retmax statt cursor)
-- Keine Abstracts für alle Artikel (viele nur Metadaten)
+═══════════════════════════════════════════════════════════════════════════
 """
 
 import requests
 import logging
+from xml.etree import ElementTree as ET
+from typing import List, Dict, Any
 import time
-import xml.etree.ElementTree as ET
-from typing import List, Dict, Any, Optional
 
 from src.core.database_adapter import DatabaseAdapter
 from src.config.settings import Settings
 
+# Der Logger wird vom LoggingManager zentralverwaltet und konfiguriert
 logger = logging.getLogger(__name__)
 
 
 class PubMedAdapter(DatabaseAdapter):
     """
-    Konkrete Implementierung des DatabaseAdapter für PubMed.
-
-    Diese Klasse kommuniziert mit der PubMed E-Utilities REST API,
-    holt Suchergebnisse und konvertiert sie in unser Standard-Format.
-
-    ZWEI-SCHRITT-PROZESS:
-
-    1. ESearch: Suche durchführen, PMID-Listen bekommen
-    2. EFetch: Details (Titel, Autoren, Abstract, etc.) holen
-
-    Das ist nötig, weil PubMed nicht alles in einer Anfrage zurückgibt.
+    Konkrete Implementierung des DatabaseAdapter für PubMed/NCBI.
+    
+    API-STRUKTUR:
+    =============
+    PubMed nutzt zwei API-Endpoints:
+    1. ESearch: Findet UIDs (Unique Identifiers) für eine Query
+    2. EFetch: Holt die Details zu den UIDs
+    
+    BEISPIEL WORKFLOW:
+    ==================
+    1. User Query: "cancer AND immunotherapy"
+    2. ESearch: Findet 50.000 UIDs für diese Query
+    3. EFetch: Holt Details zu den ersten 25 UIDs
+    4. Rückgabe: Strukturierte Artikel-Daten
+    
+    API-DOKUMENTATION:
+    ==================
+    https://www.ncbi.nlm.nih.gov/books/NBK25499/
     """
-
-    # Base URLs für E-Utilities
-    ESEARCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
-    EFETCH_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-
+    
+    def __init__(self):
+        """Initialisiert den PubMed Adapter"""
+        self.base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        
+        # Email ist für NCBI empfohlen (bei hohem Nutzungsvolumen)
+        self.email = getattr(Settings, 'NCBI_EMAIL', 'research@example.com')
+        
+        # API-Key (optional, aber empfohlen für höhere Rate Limits)
+        self.api_key = getattr(Settings, 'NCBI_API_KEY', None)
+        
+        logger.debug(f"PubMedAdapter initialisiert (Email: {self.email})")
+    
     def search(self, query: str, limit: int = 25) -> List[Dict[str, Any]]:
         """
-        Führt eine Suche in PubMed aus mit Pagination.
-
-        ZWEI-SCHRITT-PROZESS:
-
-        SCHRITT 1: ESearch - PMIDs holen
-        ================================
-
-        Wir senden eine ESearch-Anfrage, um die Artikel-IDs (PMIDs) zu bekommen.
-        ESearch gibt uns nur IDs zurück, nicht die vollständigen Daten.
-
-        SCHRITT 2: EFetch - Artikel-Details holen
-        =========================================
-
-        Mit den PMIDs rufen wir EFetch auf, um die kompletten Artikel-Details zu bekommen
-        (Titel, Autoren, Abstract, Journal, etc.).
-
-        Argumente:
-
-        query (str): Die Suchanfrage in PubMed-Syntax
-            Z.B. "aspirin AND headache"
-            Unterstützt MeSH-Terms: "aspirin[MeSH Terms]"
-            Filter: "2020:2024[pdat]" (Publikationsjahr)
-
-        limit (int): Maximale Anzahl Artikel (Default: 25)
-
-        Rückgabewert:
-
-        List[Dict]: Liste von normalisierten Artikel-Dictionaries.
-            Jedes Dictionary hat die Felder:
-            - pmid, source, title, year, authors, journal, doi, url, abstract
-
-        Exception-Handling:
-
-        Falls API-Fehler auftreten, werden bisherige Ergebnisse zurückgegeben
-        (Graceful Degradation).
+        Führt eine Suche in PubMed durch (ESearch + EFetch Kombination).
+        
+        WORKFLOW:
+        =========
+        1. ESearch: Finde UIDs für die Query
+        2. Bestimme Anzahl Treffer
+        3. EFetch: Hole Details zu den Top-UIDs
+        4. Parse XML und strukturiere Daten
+        
+        Args:
+            query (str): Suchquery in universeller Syntax (AND/OR/NOT)
+            limit (int): Maximale Anzahl Artikel zu holen (max. 10.000)
+            
+        Returns:
+            List[Dict]: Strukturierte Artikel-Daten
         """
-
-        logger.info(f"Starte PubMed-Suche nach: '{query[:50]}...' (Ziel: {limit} Artikel)")
-
-        # ========== SCHRITT 1: ESearch - PMIDs holen ==========
-
-        pmids = self._esearch(query, limit)
-
-        if not pmids:
-            logger.warning("Keine PMIDs gefunden.")
-            return []
-
-        logger.info(f"ESearch: {len(pmids)} PMIDs gefunden")
-
-        # ========== SCHRITT 2: EFetch - Artikel-Details holen ==========
-
-        results = self._efetch(pmids)
-
-        logger.info(f"Suche beendet. {len(results)} Artikel zurückgegeben.")
-
-        return results
-
-    def _esearch(self, query: str, limit: int) -> List[str]:
-        """
-        Hilfsmethode: ESearch durchführen und PMIDs zurückbekommen.
-
-        Diese Methode sendet einen GET-Request an PubMed ESearch
-        und extrahiert die Artikel-IDs (PMIDs) aus der XML-Response.
-
-        Argumente:
-
-        query (str): Die Suchanfrage
-        limit (int): Maximale Anzahl IDs zu holen
-
-        Rückgabewert:
-
-        List[str]: Liste von PMIDs (Strings wie "35123456")
-        """
-
+        
+        logger.info(f"Original Query: '{query}'")
+        logger.info(f"Starte Suche in PubMed nach: '{query[:50]}...' (Ziel: {limit} Artikel)")
+        
         try:
-            # ========== Parameter für ESearch zusammenstellen ==========
-
-            params = {
-                'db': 'pubmed',                          # Datenbank: PubMed
-                'term': query,                           # Unsere Suchanfrage
-                'retmax': min(limit, 1000),              # Max. 1000 pro Anfrage
-                'rettype': 'uilist',                     # Gib nur IDs zurück
-                'api_key': Settings.NCBI_API_KEY,        # API-Key für Rate Limiting
-                'email': Settings.NCBI_EMAIL,            # E-Mail (gefordert von NCBI)
+            # SCHRITT 1: ESearch - Finde UIDs
+            logger.debug("Führe ESearch aus...")
+            
+            esearch_params = {
+                'db': 'pubmed',
+                'term': query,
+                'rettype': 'json',
+                'retmax': min(limit, 10000),  # PubMed max 10.000
+                'usehistory': 'y',
+                'email': self.email
             }
-
-            logger.debug(f"ESearch Request an: {self.ESEARCH_URL}")
-            logger.debug(f"Parameter: {params}")
-
-            # ========== ESearch-Request senden ==========
-
-            response = requests.get(
-                self.ESEARCH_URL,
-                params=params,
-                timeout=Settings.REQUEST_TIMEOUT
-            )
-
-            response.raise_for_status()
-
-            # ========== XML parsen ==========
-
-            root = ET.fromstring(response.text)
-
-            # ========== PMIDs extrahieren ==========
-
-            pmids = []
-            for id_elem in root.findall('.//Id'):
-                if id_elem.text:
-                    pmids.append(id_elem.text)
-
-            logger.info(f"ESearch gefunden: {len(pmids)} Artikel")
-
-            return pmids
-
+            
+            if self.api_key:
+                esearch_params['api_key'] = self.api_key
+            
+            esearch_url = f"{self.base_url}/esearch.fcgi"
+            esearch_response = requests.get(esearch_url, params=esearch_params,
+                                          timeout=getattr(Settings, 'REQUEST_TIMEOUT', 30))
+            esearch_response.raise_for_status()
+            
+            esearch_data = esearch_response.json()
+            uids = esearch_data.get('esearchresult', {}).get('idlist', [])
+            total_count = esearch_data.get('esearchresult', {}).get('count', '0')
+            
+            logger.info(f"ESearch gefunden: {len(uids)} Artikel (von insgesamt {total_count})")
+            
+            if not uids:
+                logger.warning("Keine Ergebnisse gefunden.")
+                return []
+            
+            # Rate Limit einhalten
+            time.sleep(0.5)
+            
+            # SCHRITT 2: EFetch - Hole Details
+            logger.debug("Führe EFetch aus...")
+            
+            efetch_params = {
+                'db': 'pubmed',
+                'id': ','.join(uids[:limit]),
+                'rettype': 'xml',
+                'email': self.email
+            }
+            
+            if self.api_key:
+                efetch_params['api_key'] = self.api_key
+            
+            efetch_url = f"{self.base_url}/efetch.fcgi"
+            efetch_response = requests.get(efetch_url, params=efetch_params,
+                                          timeout=getattr(Settings, 'REQUEST_TIMEOUT', 30))
+            efetch_response.raise_for_status()
+            
+            # SCHRITT 3: Parse XML und strukturiere
+            results = self.parse_efetch_xml(efetch_response.text)
+            
+            logger.info(f"EFetch zurück: {len(results)} Artikel mit Details")
+            
+            return results[:limit]
+            
         except requests.exceptions.RequestException as e:
-            logger.error(f"Netzwerkfehler bei ESearch: {e}")
+            logger.error(f"Netzwerkfehler bei PubMed Anfrage: {e}")
             return []
-
-        except ET.ParseError as e:
-            logger.error(f"XML Parse-Fehler bei ESearch: {e}")
-            return []
-
-        except Exception as e:
-            logger.error(f"Fehler bei ESearch: {e}")
-            return []
-
-    def _efetch(self, pmids: List[str]) -> List[Dict[str, Any]]:
+    
+    def normalize_query(self, query: str) -> str:
         """
-        Hilfsmethode: EFetch durchführen und Artikel-Details holen.
-
-        Diese Methode sendet GET-Requests an PubMed EFetch
-        (kann max. 10.000 Artikel pro Request, aber 500 IDs pro Request empfohlen)
-        und extrahiert die Artikel-Details aus der XML-Response.
-
-        Argumente:
-
-        pmids (List[str]): Liste von PMIDs
-
-        Rückgabewert:
-
-        List[Dict]: Liste von normalisierten Artikel-Dictionaries
+        Normalisiert die Query für PubMed.
+        
+        PubMed nutzt Standard Boolean-Logik mit einigen Besonderheiten:
+        - Field Tags: [TIAB], [Title], [Abstract], [Author], etc.
+        - Phrase Search: "exact phrase"
+        - Date Ranges: 2020:2025
+        
+        Momentan: Minimal processing (nur Whitespace)
+        
+        Args:
+            query (str): Universelle Query
+            
+        Returns:
+            str: Normalisierte Query für PubMed
         """
-
-        all_results = []
-
-        # Teile die PMIDs in Batches (max. 500 pro Request)
-        batch_size = 500
-
-        for batch_start in range(0, len(pmids), batch_size):
-            batch_end = min(batch_start + batch_size, len(pmids))
-            batch_pmids = pmids[batch_start:batch_end]
-
-            logger.debug(f"EFetch Batch {batch_start//batch_size + 1}: {len(batch_pmids)} PMIDs")
-
-            try:
-                # ========== Parameter für EFetch zusammenstellen ==========
-
-                params = {
-                    'db': 'pubmed',
-                    'id': ','.join(batch_pmids),      # Komma-getrennte PMID-Liste
-                    'rettype': 'xml',                 # XML-Format (mit vollständigen Details)
-                    'retmode': 'xml',
-                    'api_key': Settings.NCBI_API_KEY,
-                    'email': Settings.NCBI_EMAIL,
-                }
-
-                # ========== EFetch-Request senden ==========
-
-                response = requests.get(
-                    self.EFETCH_URL,
-                    params=params,
-                    timeout=Settings.REQUEST_TIMEOUT
-                )
-
-                response.raise_for_status()
-
-                # ========== XML parsen ==========
-
-                root = ET.fromstring(response.text)
-
-                # ========== Artikel extrahieren ==========
-
-                for pubmed_article in root.findall('.//PubmedArticle'):
-                    article = self._parse_article(pubmed_article)
-                    if article:
-                        all_results.append(article)
-
-                # ========== Rate Limiting beachten ==========
-
-                # NCBI empfiehlt: Mit API-Key min. 1 Request/Sekunde
-                if batch_end < len(pmids):
-                    time.sleep(Settings.RATE_LIMIT_DELAY)
-
-            except requests.exceptions.RequestException as e:
-                logger.error(f"Netzwerkfehler bei EFetch Batch: {e}")
-                continue
-
-            except ET.ParseError as e:
-                logger.error(f"XML Parse-Fehler bei EFetch Batch: {e}")
-                continue
-
-            except Exception as e:
-                logger.error(f"Fehler bei EFetch Batch: {e}")
-                continue
-
-        return all_results
-
-    def _parse_article(self, pubmed_article_elem: ET.Element) -> Optional[Dict[str, Any]]:
+        
+        import re
+        normalized = re.sub(r'\s+', ' ', query).strip()
+        
+        logger.debug(f"PubMed-Query: {normalized}")
+        
+        return normalized
+    
+    def parse_efetch_xml(self, xml_string: str) -> List[Dict[str, Any]]:
         """
-        Hilfsmethode: Parst ein einzelnes PubmedArticle XML-Element
-        und konvertiert es in unser Standard-Format.
-
-        WICHTIG FIX:
-        Der Titel kann XML-Tags enthalten (z.B. <i>BRAF</i> für kursiv).
-        Diese Methode extrahiert ALLE Text-Nodes korrekt und kombiniert sie,
-        um den vollständigen Titel zu bekommen.
-
-        Beispiel:
-            Original XML: <ArticleTitle>Targeted therapy in <i>BRAF</i>-mutated cancer</ArticleTitle>
-            Ergebnis: "Targeted therapy in BRAF-mutated cancer"
-
-        Argumente:
-
-        pubmed_article_elem (ET.Element): XML Element vom Typ <PubmedArticle>
-
-        Rückgabewert:
-
-        Optional[Dict]: Normalisierter Artikel mit unseren Standard-Feldern
-            oder None bei Parse-Fehler
+        Parsed die XML-Response von PubMed EFetch.
+        
+        STRUKTUR DES XML (vereinfacht):
+        ================================
+        <PubmedArticleSet>
+          <PubmedArticle>
+            <MedlineCitation>
+              <PMID>12345678</PMID>
+              <Article>
+                <ArticleTitle>Article Title</ArticleTitle>
+                <AuthorList>
+                  <Author>
+                    <LastName>Smith</LastName>
+                    <ForeName>John</ForeName>
+                  </Author>
+                </AuthorList>
+                <Journal>
+                  <Title>Journal Name</Title>
+                  <JournalIssue>
+                    <PubDate>
+                      <Year>2023</Year>
+                    </PubDate>
+                  </JournalIssue>
+                </Journal>
+                <Abstract>
+                  <AbstractText>...</AbstractText>
+                </Abstract>
+              </Article>
+            </MedlineCitation>
+            <Article>
+              <ELocationID EIdType="doi">10.1234/example</ELocationID>
+            </Article>
+          </PubmedArticle>
+        </PubmedArticleSet>
+        
+        Args:
+            xml_string (str): Raw XML Response von EFetch
+            
+        Returns:
+            List[Dict]: Strukturierte Artikel
         """
-
+        
+        clean_results = []
+        
         try:
-            # Finde das MedlineCitation Element (enthält die meisten Infos)
-            med_citation = pubmed_article_elem.find('.//MedlineCitation')
-            if med_citation is None:
-                return None
-
-            # Finde das Article Element
-            article = med_citation.find('.//Article')
-            if article is None:
-                return None
-
-            # ========== Basis-Felder extrahieren ==========
-
-            pmid_elem = med_citation.find('.//PMID')
-            pmid = pmid_elem.text if pmid_elem is not None else 'N/A'
-
-            # ========== TITEL (FIXIERT) ==========
-            # WICHTIG: Verwendet itertext() um alle Text-Nodes zu sammeln
-            # Das funktioniert mit XML-Tags wie <i>BRAF</i>
-            title_elem = article.find('.//ArticleTitle')
-            if title_elem is not None:
-                # itertext() kombiniert alle Text-Teile rekursiv
-                # Beispiel: "<ArticleTitle>Foo <i>bar</i> baz</ArticleTitle>"
-                # -> itertext() gibt: "Foo ", "bar", " baz"
-                # -> Kombiniert: "Foo bar baz"
-                title_parts = list(title_elem.itertext())
-                title = ''.join(title_parts).strip() if title_parts else 'No Title'
-            else:
-                title = 'No Title'
-
-            # ========== Jahr extrahieren ==========
-
-            # Kann an verschiedenen Orten sein
-            year = 'N/A'
-            pub_date = article.find('.//PubDate')
-            if pub_date is not None:
-                year_elem = pub_date.find('.//Year')
-                if year_elem is not None and year_elem.text:
-                    year = year_elem.text
-
-            # ========== Journal ==========
-
-            journal_elem = article.find('.//Journal/Title')
-            journal = journal_elem.text if journal_elem is not None else 'Unknown'
-
-            # ========== DOI ==========
-
-            # WICHTIG: ArticleIdList ist unter PubmedArticle/PubmedData, nicht unter Article!
-            doi = 'N/A'
-            article_id_list = pubmed_article_elem.find('.//PubmedData/ArticleIdList')
-            if article_id_list is not None:
-                for article_id in article_id_list.findall('ArticleId'):
-                    if article_id.get('IdType') == 'doi':
-                        doi = article_id.text
-                        break
-
-            # ========== Autoren ==========
-
-            authors = self._extract_authors(article)
-
-            # ========== Abstract ==========
-
-            abstract_elem = article.find('.//Abstract/AbstractText')
-            abstract = abstract_elem.text if abstract_elem is not None else ''
-
-            # ========== URL ==========
-
-            url = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-
-            # ========== Zusammenstellen ==========
-
-            result = {
-                'id': pmid,
-                'source': 'PubMed',
-                'title': title,
-                'year': year,
-                'authors': authors,
-                'journal': journal,
-                'doi': doi,
-                'url': url,
-                'abstract': abstract
-            }
-
-            return result
-
-        except Exception as e:
-            logger.warning(f"Fehler beim Parsen eines Artikels: {e}")
-            return None
-
-    def _extract_authors(self, article_elem: ET.Element) -> str:
+            root = ET.fromstring(xml_string)
+            
+            # Iteriere durch alle PubmedArticle Elemente
+            for article_elem in root.findall('.//PubmedArticle'):
+                
+                # PMID
+                pmid_elem = article_elem.find('.//PMID')
+                pmid = pmid_elem.text if pmid_elem is not None else 'N/A'
+                
+                # Title
+                title_elem = article_elem.find('.//ArticleTitle')
+                title = title_elem.text if title_elem is not None else 'No Title'
+                
+                # Authors
+                authors = self._extract_authors(article_elem)
+                
+                # Year
+                year_elem = article_elem.find('.//PubDate/Year')
+                year = year_elem.text if year_elem is not None else 'N/A'
+                
+                # Journal
+                journal_elem = article_elem.find('.//Journal/Title')
+                journal = journal_elem.text if journal_elem is not None else 'Unknown'
+                
+                # DOI
+                doi_elem = article_elem.find(".//ELocationID[@EIdType='doi']")
+                doi = doi_elem.text if doi_elem is not None else 'N/A'
+                
+                # Abstract
+                abstract_elem = article_elem.find('.//AbstractText')
+                abstract = abstract_elem.text if abstract_elem is not None else ''
+                
+                # Strukturiere Artikel
+                article = {
+                    'id': pmid,
+                    'source': 'pubmed',
+                    'title': title,
+                    'year': year,
+                    'authors': authors,
+                    'journal': journal,
+                    'doi': doi,
+                    'url': f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/",
+                    'abstract': abstract
+                }
+                
+                clean_results.append(article)
+                
+        except ET.ParseError as e:
+            logger.error(f"XML Parse-Fehler: {e}")
+        
+        return clean_results
+    
+    def _extract_authors(self, article_elem) -> str:
         """
-        Hilfsmethode: Extrahiert und formatiert die Autoren.
-
-        Format: "Nachname, Vorname; Nachname2, Vorname2"
-        (Zotero-kompatibel)
-
-        Argumente:
-
-        article_elem (ET.Element): Das XML-Element <Article>
-
-        Rückgabewert:
-
-        str: Autoren-String im Zotero-Format, oder "Unknown"
+        Extrahiert Autoren aus dem XML-Element.
+        
+        Format: "LastName, FirstName; LastName, FirstName; ..."
+        
+        Args:
+            article_elem: XML Element des Artikels
+            
+        Returns:
+            str: Autoren-String im Zotero-Format, oder "Unknown"
         """
-
+        
         try:
             author_list_elem = article_elem.find('.//AuthorList')
-
+            
             if author_list_elem is None:
                 return 'Unknown'
-
+            
             authors = []
-
+            
             for author in author_list_elem.findall('Author'):
-
+                
                 # ========== Nachname ==========
-
                 last_name_elem = author.find('LastName')
                 last_name = last_name_elem.text if last_name_elem is not None else None
-
+                
                 if not last_name:
                     continue
-
+                
                 # ========== Vorname / Initialen ==========
-
                 fore_name_elem = author.find('ForeName')
                 initials_elem = author.find('Initials')
-
+                
                 if fore_name_elem is not None and fore_name_elem.text:
                     fore_name = fore_name_elem.text
                 elif initials_elem is not None and initials_elem.text:
                     fore_name = initials_elem.text
                 else:
                     fore_name = ''
-
+                
                 # ========== Formatieren ==========
-
                 if fore_name:
                     authors.append(f"{last_name}, {fore_name}")
                 else:
                     authors.append(last_name)
-
+            
             if authors:
                 return "; ".join(authors)
             else:
                 return 'Unknown'
-
+                
         except Exception as e:
             logger.warning(f"Fehler beim Extrahieren von Autoren: {e}")
             return 'Unknown'
