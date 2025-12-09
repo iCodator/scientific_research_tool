@@ -1,6 +1,6 @@
 """
 ═══════════════════════════════════════════════════════════════════════════
-PUBMED DATENBANK-ADAPTER
+PUBMED DATENBANK-ADAPTER - MIT FIXES
 ═══════════════════════════════════════════════════════════════════════════
 
 Modul: NCBI PubMed API Integration
@@ -16,6 +16,7 @@ BESONDERHEITEN:
 ✓ XML-basierte Responses
 ✓ Umfangreiche Feldtags (TIAB, Title, Abstract, etc.)
 ✓ Date-Range Suche unterstützt
+✓ BUGFIX: Field Tags werden für ESearch entfernt
 
 ═══════════════════════════════════════════════════════════════════════════
 """
@@ -25,6 +26,7 @@ import logging
 from xml.etree import ElementTree as ET
 from typing import List, Dict, Any
 import time
+import re
 
 from src.core.database_adapter import DatabaseAdapter
 from src.config.settings import Settings
@@ -53,6 +55,11 @@ class PubMedAdapter(DatabaseAdapter):
     API-DOKUMENTATION:
     ==================
     https://www.ncbi.nlm.nih.gov/books/NBK25499/
+    
+    WICHTIGE FIXES (Dezember 2025):
+    ===============================
+    ✓ Field Tags werden für ESearch entfernt
+      (z.B. [Title/Abstract], [dp]) sind nur für EFetch nötig!
     """
     
     def __init__(self):
@@ -73,10 +80,11 @@ class PubMedAdapter(DatabaseAdapter):
         
         WORKFLOW:
         =========
-        1. ESearch: Finde UIDs für die Query
-        2. Bestimme Anzahl Treffer
-        3. EFetch: Hole Details zu den Top-UIDs
-        4. Parse XML und strukturiere Daten
+        1. Normalisiere Query (entferne Field Tags für ESearch)
+        2. ESearch: Finde UIDs für die Query
+        3. Bestimme Anzahl Treffer
+        4. EFetch: Hole Details zu den Top-UIDs
+        5. Parse XML und strukturiere Daten
         
         Args:
             query (str): Suchquery in universeller Syntax (AND/OR/NOT)
@@ -90,12 +98,16 @@ class PubMedAdapter(DatabaseAdapter):
         logger.info(f"Starte Suche in PubMed nach: '{query[:50]}...' (Ziel: {limit} Artikel)")
         
         try:
+            # SCHRITT 0: Normalisiere Query (entferne Field Tags)
+            normalized_query = self.normalize_query(query)
+            logger.debug(f"Normalisierte Query (ohne Field Tags): {normalized_query[:80]}...")
+            
             # SCHRITT 1: ESearch - Finde UIDs
             logger.debug("Führe ESearch aus...")
             
             esearch_params = {
                 'db': 'pubmed',
-                'term': query,
+                'term': normalized_query,
                 'rettype': 'json',
                 'retmax': min(limit, 10000),  # PubMed max 10.000
                 'usehistory': 'y',
@@ -154,28 +166,48 @@ class PubMedAdapter(DatabaseAdapter):
     
     def normalize_query(self, query: str) -> str:
         """
-        Normalisiert die Query für PubMed.
+        Normalisiert die Query für PubMed ESearch.
         
-        PubMed nutzt Standard Boolean-Logik mit einigen Besonderheiten:
-        - Field Tags: [TIAB], [Title], [Abstract], [Author], etc.
-        - Phrase Search: "exact phrase"
-        - Date Ranges: 2020:2025
+        WICHTIG - BUGFIX (Dezember 2025):
+        ==================================
+        Field Tags wie [Title/Abstract], [dp] werden ENTFERNT!
         
-        Momentan: Minimal processing (nur Whitespace)
+        WARUM?
+        ------
+        - ESearch versteht nur einfache Boolean-Logik
+        - Field Tags sind nur für EFetch (wenn wir die XML holen)
+        - Wenn ESearch Field Tags sieht, gibt es leere Responses!
+        
+        BEISPIELE:
+        ----------
+        ❌ VORHER:
+        mouse[Title/Abstract] OR mice[Title/Abstract] AND 2023:2025[dp]
+        
+        ✅ NACHHER:
+        mouse OR mice AND 2023:2025
+        
+        ❌ VORHER:
+        (cancer OR tumor)[TIAB] AND treatment[TIAB]
+        
+        ✅ NACHHER:
+        (cancer OR tumor) AND treatment
         
         Args:
-            query (str): Universelle Query
+            query (str): Universelle Query mit möglicherweise Field Tags
             
         Returns:
-            str: Normalisierte Query für PubMed
+            str: Bereinigte Query für ESearch ohne Field Tags
         """
         
-        import re
-        normalized = re.sub(r'\s+', ' ', query).strip()
+        # 1. Entferne alle Field Tags [...]
+        cleaned = re.sub(r'\[.*?\]', '', query)
         
-        logger.debug(f"PubMed-Query: {normalized}")
+        # 2. Normalisiere Whitespace
+        cleaned = re.sub(r'\s+', ' ', cleaned).strip()
         
-        return normalized
+        logger.debug(f"PubMed ESearch Query (Field Tags entfernt): {cleaned[:80]}...")
+        
+        return cleaned
     
     def parse_efetch_xml(self, xml_string: str) -> List[Dict[str, Any]]:
         """
