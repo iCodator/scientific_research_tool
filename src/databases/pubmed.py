@@ -1,6 +1,6 @@
 """
 ═══════════════════════════════════════════════════════════════════════════
-PUBMED DATENBANK-ADAPTER - MIT FIXES
+PUBMED DATENBANK-ADAPTER - FINAL FIX
 ═══════════════════════════════════════════════════════════════════════════
 
 Modul: NCBI PubMed API Integration
@@ -16,7 +16,8 @@ BESONDERHEITEN:
 ✓ XML-basierte Responses
 ✓ Umfangreiche Feldtags (TIAB, Title, Abstract, etc.)
 ✓ Date-Range Suche unterstützt
-✓ BUGFIX: Field Tags werden für ESearch entfernt
+✓ BUGFIX 1: Field Tags werden für ESearch entfernt
+✓ BUGFIX 2: Korrekter Parameter 'retmode' statt 'rettype'
 
 ═══════════════════════════════════════════════════════════════════════════
 """
@@ -60,6 +61,7 @@ class PubMedAdapter(DatabaseAdapter):
     ===============================
     ✓ Field Tags werden für ESearch entfernt
       (z.B. [Title/Abstract], [dp]) sind nur für EFetch nötig!
+    ✓ Parameter 'retmode' für JSON-Response korrigiert
     """
     
     def __init__(self):
@@ -108,8 +110,8 @@ class PubMedAdapter(DatabaseAdapter):
             esearch_params = {
                 'db': 'pubmed',
                 'term': normalized_query,
-                'rettype': 'json',
-                'retmax': min(limit, 10000),  # PubMed max 10.000
+                'retmode': 'json',   # <--- FIX: retmode statt rettype!
+                'retmax': min(limit, 10000),
                 'usehistory': 'y',
                 'email': self.email
             }
@@ -118,11 +120,23 @@ class PubMedAdapter(DatabaseAdapter):
                 esearch_params['api_key'] = self.api_key
             
             esearch_url = f"{self.base_url}/esearch.fcgi"
+            
+            # Debugging URL
+            logger.debug(f"ESearch URL: {esearch_url}")
+            logger.debug(f"ESearch Params: {esearch_params}")
+            
             esearch_response = requests.get(esearch_url, params=esearch_params,
                                           timeout=getattr(Settings, 'REQUEST_TIMEOUT', 30))
             esearch_response.raise_for_status()
             
-            esearch_data = esearch_response.json()
+            # Erweiterte Fehlerdiagnose: Falls kein JSON kommt
+            try:
+                esearch_data = esearch_response.json()
+            except requests.exceptions.JSONDecodeError:
+                logger.error(f"PubMed lieferte ungültiges JSON zurück!")
+                logger.error(f"Response Preview: {esearch_response.text[:200]}...")
+                return []
+
             uids = esearch_data.get('esearchresult', {}).get('idlist', [])
             total_count = esearch_data.get('esearchresult', {}).get('count', '0')
             
@@ -141,7 +155,7 @@ class PubMedAdapter(DatabaseAdapter):
             efetch_params = {
                 'db': 'pubmed',
                 'id': ','.join(uids[:limit]),
-                'rettype': 'xml',
+                'rettype': 'xml', # Hier ist rettype korrekt für XML return type bei EFetch
                 'email': self.email
             }
             
@@ -172,26 +186,6 @@ class PubMedAdapter(DatabaseAdapter):
         ==================================
         Field Tags wie [Title/Abstract], [dp] werden ENTFERNT!
         
-        WARUM?
-        ------
-        - ESearch versteht nur einfache Boolean-Logik
-        - Field Tags sind nur für EFetch (wenn wir die XML holen)
-        - Wenn ESearch Field Tags sieht, gibt es leere Responses!
-        
-        BEISPIELE:
-        ----------
-        ❌ VORHER:
-        mouse[Title/Abstract] OR mice[Title/Abstract] AND 2023:2025[dp]
-        
-        ✅ NACHHER:
-        mouse OR mice AND 2023:2025
-        
-        ❌ VORHER:
-        (cancer OR tumor)[TIAB] AND treatment[TIAB]
-        
-        ✅ NACHHER:
-        (cancer OR tumor) AND treatment
-        
         Args:
             query (str): Universelle Query mit möglicherweise Field Tags
             
@@ -212,45 +206,6 @@ class PubMedAdapter(DatabaseAdapter):
     def parse_efetch_xml(self, xml_string: str) -> List[Dict[str, Any]]:
         """
         Parsed die XML-Response von PubMed EFetch.
-        
-        STRUKTUR DES XML (vereinfacht):
-        ================================
-        <PubmedArticleSet>
-          <PubmedArticle>
-            <MedlineCitation>
-              <PMID>12345678</PMID>
-              <Article>
-                <ArticleTitle>Article Title</ArticleTitle>
-                <AuthorList>
-                  <Author>
-                    <LastName>Smith</LastName>
-                    <ForeName>John</ForeName>
-                  </Author>
-                </AuthorList>
-                <Journal>
-                  <Title>Journal Name</Title>
-                  <JournalIssue>
-                    <PubDate>
-                      <Year>2023</Year>
-                    </PubDate>
-                  </JournalIssue>
-                </Journal>
-                <Abstract>
-                  <AbstractText>...</AbstractText>
-                </Abstract>
-              </Article>
-            </MedlineCitation>
-            <Article>
-              <ELocationID EIdType="doi">10.1234/example</ELocationID>
-            </Article>
-          </PubmedArticle>
-        </PubmedArticleSet>
-        
-        Args:
-            xml_string (str): Raw XML Response von EFetch
-            
-        Returns:
-            List[Dict]: Strukturierte Artikel
         """
         
         clean_results = []
@@ -305,61 +260,31 @@ class PubMedAdapter(DatabaseAdapter):
                 
         except ET.ParseError as e:
             logger.error(f"XML Parse-Fehler: {e}")
+            logger.debug(f"Fehlerhaftes XML: {xml_string[:200]}...")
         
         return clean_results
     
     def _extract_authors(self, article_elem) -> str:
-        """
-        Extrahiert Autoren aus dem XML-Element.
-        
-        Format: "LastName, FirstName; LastName, FirstName; ..."
-        
-        Args:
-            article_elem: XML Element des Artikels
-            
-        Returns:
-            str: Autoren-String im Zotero-Format, oder "Unknown"
-        """
-        
+        """Extrahiert Autoren aus dem XML-Element."""
         try:
             author_list_elem = article_elem.find('.//AuthorList')
-            
-            if author_list_elem is None:
-                return 'Unknown'
+            if author_list_elem is None: return 'Unknown'
             
             authors = []
-            
             for author in author_list_elem.findall('Author'):
-                
-                # ========== Nachname ==========
                 last_name_elem = author.find('LastName')
                 last_name = last_name_elem.text if last_name_elem is not None else None
+                if not last_name: continue
                 
-                if not last_name:
-                    continue
-                
-                # ========== Vorname / Initialen ==========
                 fore_name_elem = author.find('ForeName')
                 initials_elem = author.find('Initials')
                 
-                if fore_name_elem is not None and fore_name_elem.text:
-                    fore_name = fore_name_elem.text
-                elif initials_elem is not None and initials_elem.text:
-                    fore_name = initials_elem.text
-                else:
-                    fore_name = ''
+                fore_name = fore_name_elem.text if fore_name_elem is not None else \
+                           (initials_elem.text if initials_elem is not None else '')
                 
-                # ========== Formatieren ==========
-                if fore_name:
-                    authors.append(f"{last_name}, {fore_name}")
-                else:
-                    authors.append(last_name)
+                if fore_name: authors.append(f"{last_name}, {fore_name}")
+                else: authors.append(last_name)
             
-            if authors:
-                return "; ".join(authors)
-            else:
-                return 'Unknown'
-                
-        except Exception as e:
-            logger.warning(f"Fehler beim Extrahieren von Autoren: {e}")
+            return "; ".join(authors) if authors else 'Unknown'
+        except Exception:
             return 'Unknown'
