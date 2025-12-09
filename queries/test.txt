@@ -1,0 +1,5 @@
+# Suche nach Coenzym Q10
+'Coenzym Q10'  # Hauptterm
+AND
+# Zeitraum-Filter
+(2015:2025[pdat])  # Nur Artikel ab 2015
