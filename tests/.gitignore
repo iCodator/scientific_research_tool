@@ -1,0 +1,260 @@
+################################################################################
+#                          GITIGNORE für tests/                               #
+#                                                                             #
+#  Diese Datei sagt Git welche Dateien es NICHT speichern/committen soll    #
+#  (z.B. automatisch generierte Dateien, temporäre Dateien, etc)            #
+################################################################################
+
+# ────────────────────────────────────────────────────────────────────────────
+# 🐍 PYTHON-CACHE
+# ────────────────────────────────────────────────────────────────────────────
+# Python erstellt automatisch .pyc Dateien und __pycache__ Ordner
+# Diese sind unnötig groß und werden überall regeneriert
+
+__pycache__/              # Python Cache Ordner
+*.py[cod]                 # Compiled Python Dateien (.pyc, .pyo, .pyd)
+*$py.class                # Python Class Dateien
+*.so                      # Shared Object Dateien (C Extensions)
+
+# Python Virtual Environment
+*.egg-info/               # Egg-Info Verzeichnis
+.eggs/                    # Eggs Verzeichnis
+*.egg                     # Egg Dateien
+dist/                     # Distribution Verzeichnis
+build/                    # Build Verzeichnis
+develop-eggs/             # Entwicklungs-Eggs
+
+# ────────────────────────────────────────────────────────────────────────────
+# 🔄 VIRTUELLE UMGEBUNGEN
+# ────────────────────────────────────────────────────────────────────────────
+# Virtual Environments sind lokal und sollten NICHT gepusht werden
+# Jeder erstellt seine eigene Umgebung mit: python -m venv venv
+
+venv/                     # Virtual Environment Verzeichnis
+env/                      # Alternative name für venv
+ENV/                      # Windows Alternative
+.venv                     # Hidden venv
+pip-log.txt               # pip Log Datei
+pip-delete-this-directory.txt  # pip Temp Datei
+
+# ────────────────────────────────────────────────────────────────────────────
+# 💾 ABHÄNGIGKEITEN (werden mit pip install installiert)
+# ────────────────────────────────────────────────────────────────────────────
+# Diese sollten in requirements.txt dokumentiert sein, nicht ins Repo
+
+site-packages/            # Installierte Packages
+*.egg-info/               # Package Info
+
+# ────────────────────────────────────────────────────────────────────────────
+# 📝 EDITOR & IDE DATEIEN
+# ────────────────────────────────────────────────────────────────────────────
+# Verschiedene Editoren erstellen spezifische Dateien
+# Diese sind LOKAL und sollten nicht geteilt werden
+
+# VSCode
+.vscode/                  # VS Code Settings Ordner
+.vscode/*
+!.vscode/settings.json    # Exception: Gemeinsame VSCode Settings OK
+
+# PyCharm / IntelliJ
+.idea/                    # IntelliJ Idea Ordner
+.idea/*
+*.iml                     # IntelliJ Projekt Datei
+*.iws                     # IntelliJ Workspace
+*.ipr                     # IntelliJ Projekt
+
+# Sublime Text
+*.sublime-project         # Sublime Projekt
+*.sublime-workspace       # Sublime Workspace
+sftp-config.json          # SFTP Config
+
+# Vim
+*.swp                     # Vim Swap Dateien
+*.swo                     # Vim Backup Dateien
+*~                        # Vim Backup
+.vim/                     # Vim Konfiguration
+
+# Emacs
+*~                        # Emacs Backup
+\#*\#                     # Emacs Auto-Save
+.\#*                      # Emacs Lock-Dateien
+
+# ────────────────────────────────────────────────────────────────────────────
+# 🖥️ BETRIEBSSYSTEM DATEIEN
+# ────────────────────────────────────────────────────────────────────────────
+# Betriebssysteme erstellen automatisch Metadateien
+# Diese sind LOKAL und sollten NICHT geteilt werden
+
+# macOS
+.DS_Store                 # macOS Ordner-Info Datei
+.AppleDouble              # Apple Double Encoding
+.LSOverride                # Apple Datei-Attribute
+._*                       # macOS Datei-Präfix
+.Spotlight-V100           # Spotlight Index
+.Trashes                  # Trash Ordner
+ehthumbs.db               # Windows Thumbnail Cache
+
+# Windows
+Thumbs.db                 # Windows Thumbnail Cache
+ehthumbs.db               # Alternative
+Desktop.ini               # Windows Desktop Datei
+$RECYCLE.BIN/             # Windows Recycle Bin
+
+# Linux
+.directory                # KDE Verzeichnis Datei
+
+# ────────────────────────────────────────────────────────────────────────────
+# 📊 TEST-ERGEBNISSE (werden regeneriert bei jedem Test-Lauf)
+# ────────────────────────────────────────────────────────────────────────────
+# Diese Dateien werden AUTOMATISCH generiert und sollten nicht gepusht werden
+# Sie werden bei jedem Test-Lauf neu erstellt
+
+reports/*                 # Test Reports (außer README)
+!reports/.gitkeep         # Aber halte das Verzeichnis (mit .gitkeep)
+results/*                 # Test Ergebnisse
+!results/.gitkeep         # Aber halte das Verzeichnis
+logs/*.log                # Log Dateien
+!logs/.gitkeep            # Aber halte das Verzeichnis
+*.log                     # Alle Log Dateien
+
+# Test Coverage
+.coverage                 # Coverage Datei
+htmlcov/                  # Coverage HTML Report
+.pytest_cache/            # Pytest Cache
+
+# ────────────────────────────────────────────────────────────────────────────
+# 🔐 SENSIBLE DATEIEN (WICHTIG!)
+# ────────────────────────────────────────────────────────────────────────────
+# API-Keys, Passwörter, etc NIEMALS ins Repo!
+
+.env                      # Environment Variablen (mit Passwörtern!)
+.env.local                # Lokale Env Datei
+.env.*.local              # Environment spezifische Dateien
+config.local.py           # Lokale Config mit Secrets
+secrets/                  # Geheime Dateien
+*.key                     # Private Keys
+*.pem                     # Certificate Dateien
+credentials.json          # API Credentials
+
+# ────────────────────────────────────────────────────────────────────────────
+# 📦 PACKAGE MANAGER
+# ────────────────────────────────────────────────────────────────────────────
+# Package Manager Lock-Dateien sind lokal
+
+Pipfile.lock              # Pipenv Lock
+poetry.lock               # Poetry Lock
+pdm.lock                  # PDM Lock
+
+# ────────────────────────────────────────────────────────────────────────────
+# 🔧 BUILD & COMPILE ARTEFAKTE
+# ────────────────────────────────────────────────────────────────────────────
+# Diese entstehen beim Bauen/Kompilieren
+
+*.o                       # Compiled Object Files
+*.a                       # Static Libraries
+*.so                      # Shared Objects
+*.dylib                   # macOS Dynamic Libraries
+*.dll                     # Windows Dynamic Libraries
+*.exe                     # Executable Files
+
+# ────────────────────────────────────────────────────────────────────────────
+# 📝 TEMPORÄRE & BACKUP DATEIEN
+# ────────────────────────────────────────────────────────────────────────────
+# Temporäre Dateien die während Entwicklung entstehen
+
+tmp/                      # Temp Ordner
+temp/                     # Temp Ordner (Alternative)
+*.tmp                     # Temp Dateien
+*.bak                     # Backup Dateien
+*.swp                     # Editor Swap
+*.orig                    # Original beim Merge
+
+# ────────────────────────────────────────────────────────────────────────────
+# 📚 JUPYTER & NOTEBOOKS
+# ────────────────────────────────────────────────────────────────────────────
+# Falls Jupyter Notebooks verwendet werden
+
+.ipynb_checkpoints/       # Jupyter Checkpoints
+*.ipynb_checkpoints       # Jupyter Checkpoint
+.jupyter/                 # Jupyter Config
+
+# ────────────────────────────────────────────────────────────────────────────
+# 🧪 PYTEST SPEZIFISCH
+# ────────────────────────────────────────────────────────────────────────────
+
+.pytest_cache/            # Pytest Cache Verzeichnis
+.tox/                     # Tox Verzeichnis
+.coverage*                # Coverage Dateien
+htmlcov/                  # HTML Coverage Report
+
+# ────────────────────────────────────────────────────────────────────────────
+# 📋 VERSCHIEDENES
+# ────────────────────────────────────────────────────────────────────────────
+
+*.zip                     # ZIP Archive
+*.tar.gz                  # TAR.GZ Archive
+*.rar                     # RAR Archive
+
+# Database Dateien
+*.db                      # SQLite Database
+*.sqlite                  # SQLite Alternative
+*.sqlite3                 # SQLite3
+
+# ════════════════════════════════════════════════════════════════════════════
+# ⚠️  WICHTIG: EXCEPTIONS (Ausnahmen)
+# ════════════════════════════════════════════════════════════════════════════
+# Diese Dateien SOLLEN gepusht werden, auch wenn sie Match den Patterns
+
+# .gitkeep Dateien SOLLEN gepusht werden (halten leere Dirs)
+!.gitkeep
+
+# README Dateien in Test-Verzeichnissen
+!reports/README.md
+!results/README.md
+!logs/README.md
+
+# ════════════════════════════════════════════════════════════════════════════
+# 📚 ERKLÄRUNG FÜR ANFÄNGER
+# ════════════════════════════════════════════════════════════════════════════
+#
+# WAS IST .gitignore?
+# ───────────────────
+# .gitignore ist eine Text-Datei die Git sagt: "Diese Dateien sollen
+# NICHT ins Repository (nicht gepusht werden)!"
+#
+# WARUM?
+# ──────
+# 1. SICHERHEIT: Passwörter, API-Keys sollten NIEMALS im Repo sein
+# 2. PLATZ: Automatisch generierte Dateien sind riesig & unnötig
+# 3. KLARHEIT: Nur wichtige Dateien ins Repo
+# 4. KONFLIKT: Jeder hat andere lokale Dateien (z.B. VSCode Settings)
+#
+# WAS SOLL ABER REIN?
+# ───────────────────
+# ✅ Source Code (.py, .js, etc)
+# ✅ Dokumentation (.md, .txt)
+# ✅ Config Dateien (aber KEINE Passwords!)
+# ✅ Test Input/Fixtures
+# ✅ requirements.txt (aber NICHT venv/)
+#
+# WAS SOLL NICHT REIN?
+# ────────────────────
+# ❌ __pycache__, .pyc, *.egg-info
+# ❌ venv/, .env
+# ❌ .DS_Store, Thumbs.db
+# ❌ .vscode/, .idea/
+# ❌ Passwords, API Keys, Secrets
+# ❌ Automatisch generierte Reports/Logs
+#
+# HOW TO TEST:
+# ────────────
+# git status  → zeigt welche Dateien gepusht würden
+# Wenn du etwas NICHT sehen möchtest, addiere es hier
+#
+# ════════════════════════════════════════════════════════════════════════════
+
+Document: tests/.gitignore
+Version: 1.0
+Datum: 10. Dezember 2025
+Zielgruppe: Alle Entwickler
+Wichtigkeit: HIGH (Sicherheit & Repo-Sauberkeit)
