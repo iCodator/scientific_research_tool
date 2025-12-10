@@ -13,8 +13,34 @@ env/
 venv/
 ENV/
 .venv
+.vscode
+downloads.perplexity/
 pip-log.txt
 pip-delete-this-directory.txt
+
+# ═══════════════════════════════════════════════════════════════════════════
+# TESTS - Artefakte ignorieren, aber Code/Doku behalten!
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Generierte Test-Artefakte ignorieren
+tests/logs/*
+tests/results/*
+tests/data/*
+
+# Aber .gitkeep behalten (damit Ordner existieren)
+!tests/logs/.gitkeep
+!tests/results/.gitkeep
+!tests/data/.gitkeep
+
+# Pytest Cache
+tests/__pycache__/
+tests/**/__pycache__/
+tests/.pytest_cache/
+
+# Optional: Archivierte Doku ignorieren (wenn gewünscht)
+# tests/doc/archive/*
+
+# WICHTIG: tests/doc/, tests/queries/ und tests/src/ werden NICHT ignoriert!
 
 # ═══════════════════════════════════════════════════════════════════════════
 # IDE und Editor
@@ -44,14 +70,6 @@ logs/*.log
 output/*.csv
 output/*.json
 !output/.gitkeep
-
-# ═══════════════════════════════════════════════════════════════════════════
-# Query-Dateien - Optional (je nach Projekt)
-# ═══════════════════════════════════════════════════════════════════════════
-
-# Beispiel-Queries committen, aber nicht die Testdaten:
-# queries/                    # Queries committen
-# queries/test_queries/       # Test-Queries ignorieren
 
 # ═══════════════════════════════════════════════════════════════════════════
 # OS-spezifische Dateien

@@ -1,0 +1,7 @@
+"Coenzym Q10" AND (2015:2025[pdat]) -> (("Coenzyme Q10") AND FIRST_PDATE:[2015 TO 2025])
+diabetes AND exercise -> ((diabetes) AND (exercise))
+cancer NOT mouse -> ((cancer) NOT ((mouse)))
+("Coenzyme Q10" OR ubiquinone) AND 2020:2025[pdat] -> ((("Coenzyme Q10" OR ubiquinone) AND (FIRST_PDATE:[2020 TO 2025])))
+kidney allograft AND transplant -> ((kidney allograft) AND (transplant))
+
+

@@ -1,0 +1,8 @@
+Conzyme Q10 OR ubiquinol
+AND
+physiology OR physiol*
+NOT
+animal OR mouse OR rat
+
+(((coenzyme q10) OR (ubiquinol)) AND ((physiology) OR (physiol*))) NOT ((animal) OR (mouse) OR (rat)) 9575
+((coenzyme q10) OR (ubiquinol)) AND ((physiology) OR (physiol*)) NOT ((animal) OR (mouse) OR (rat)) 9575

@@ -1,7 +1,0 @@
-("Ubiquinone"[Mesh] OR "Coenzyme Q10"[Title/Abstract] OR "CoQ10"[Title/Abstract]) 
-AND 
-("Physiological Phenomena"[Mesh] OR "physiology"[Subheading] OR "metabolism"[Subheading] OR "Reference Values"[Mesh]) 
-AND 
-"Humans"[Mesh] 
-NOT 
-("Cardiovascular Diseases"[Majr] OR "Diabetes Mellitus"[Majr] OR "Neoplasms"[Majr] OR "Nervous System Diseases"[Majr] OR "Therapeutics"[Majr] OR "Drug Therapy"[Subheading])

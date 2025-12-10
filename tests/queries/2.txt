@@ -1,0 +1,11 @@
+Term1 OR Term2
+NOT
+
+Term3 AND Term4 OR Term5
+# wqergjhpwejhrg qeüwrigjqwüjie qüweirjg
+AND
+Term6 OR Term7 # qwrkngq  iqerjbgvüji 
+
+
+
+

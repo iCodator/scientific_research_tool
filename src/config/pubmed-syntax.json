@@ -1,0 +1,197 @@
+{
+  "metadata": {
+    "name": "PubMed Search Syntax Regelwerk",
+    "version": "1.0.1",
+    "date": "2025-12-09",
+    "sources": [
+      "https://pubmed.ncbi.nlm.nih.gov/help/",
+      "https://www.ncbi.nlm.nih.gov/books/NBK25499/"
+    ],
+    "description": "Maschinenlesbares Regelwerk für PubMed Query-Kompilierung",
+    "language": "de"
+  },
+  "direct_search": {
+    "description": "Direkte Suche ohne Feldangaben",
+    "rules": [
+      {
+        "id": "simple_terms",
+        "name": "Einfache Suchbegriffe",
+        "description": "Einzelne Wörter werden in allen Feldern gesucht",
+        "case_sensitive": false,
+        "automatic_term_mapping": true
+      },
+      {
+        "id": "phrase_search",
+        "name": "Phrasensuche",
+        "description": "Exakte Wortfolge mit doppelten Anführungszeichen",
+        "syntax": "\"Phrase\"",
+        "required_quotes": "double",
+        "atm_disabled": true
+      },
+      {
+        "id": "boolean_operators",
+        "name": "Boolean-Operatoren",
+        "description": "Logische Operatoren für Queries",
+        "operators": [
+          "AND",
+          "OR",
+          "NOT"
+        ],
+        "case_sensitive": true,
+        "notes": "Operatoren MÜSSEN großgeschrieben sein"
+      },
+      {
+        "id": "wildcard_search",
+        "name": "Wildcard-Suche",
+        "description": "Verwendung von * für Platzhalter",
+        "symbol": "*",
+        "min_chars_before": 4,
+        "at_beginning": false
+      }
+    ]
+  },
+  "field_search": {
+    "description": "Feldspezifische Suche mit FELDNAME[Tag]",
+    "general_rules": {
+      "case_sensitivity": "Tags sind CASE-INSENSITIVE",
+      "spacing": "KEIN Leerzeichen zwischen Term und [Tag]",
+      "syntax": "term[tag]"
+    },
+    "fields": [
+      {
+        "id": "title",
+        "name": "Title",
+        "tag": "[ti]",
+        "description": "Suche nur im Titel"
+      },
+      {
+        "id": "abstract",
+        "name": "Abstract",
+        "tag": "[ab]",
+        "description": "Suche nur im Abstract"
+      },
+      {
+        "id": "title_abstract",
+        "name": "Title/Abstract",
+        "tag": "[tiab]",
+        "description": "Suche in Titel und Abstract"
+      },
+      {
+        "id": "author",
+        "name": "Author",
+        "tag": "[au]",
+        "description": "Suche nach Autor-Namen"
+      },
+      {
+        "id": "journal",
+        "name": "Journal",
+        "tag": "[ta]",
+        "description": "Suche nach Journal-Namen"
+      },
+      {
+        "id": "pub_year",
+        "name": "Publication Year",
+        "tag": "[pdat]",
+        "description": "Filterung nach Publikationsjahr",
+        "syntax_single": "term AND YYYY[pdat]",
+        "syntax_range": "term AND YYYY:YYYY[pdat]",
+        "critical": true
+      },
+      {
+        "id": "mesh",
+        "name": "MeSH Terms",
+        "tag": "[mh]",
+        "description": "Medical Subject Headings"
+      }
+    ]
+  },
+  "common_errors": [
+    {
+      "error_id": "wrong_quotes",
+      "description": "Einfache Anführungszeichen statt doppelte",
+      "wrong": "'kidney allograft'",
+      "correct": "\"kidney allograft\"",
+      "explanation": "PubMed unterstützt nur doppelte Anführungszeichen!"
+    },
+    {
+      "error_id": "wrong_date_format",
+      "description": "Falsches Datumsformat",
+      "wrong": [
+        "2015 TO 2025[pdat]",
+        "2015-2025[pdat]"
+      ],
+      "correct": "2015:2025[pdat]",
+      "explanation": "Nur Doppelpunkt (:) zwischen Jahren"
+    },
+    {
+      "error_id": "lowercase_operators",
+      "description": "Kleingeschriebene Boolean-Operatoren",
+      "wrong": "diabetes and exercise",
+      "correct": "diabetes AND exercise",
+      "explanation": "'and' wird als normales Wort gesucht"
+    },
+    {
+      "error_id": "spacing_in_field",
+      "description": "Leerzeichen um Field Tag",
+      "wrong": [
+        "cancer [ti]",
+        "cancer[ ti ]"
+      ],
+      "correct": "cancer[ti]",
+      "explanation": "Kein Leerzeichen zwischen Term und [Tag]"
+    },
+    {
+      "error_id": "unbalanced_parentheses",
+      "description": "Unausgeglichene Klammern",
+      "wrong": "(diabetes OR exercise AND 2020[pdat]",
+      "correct": "(diabetes OR exercise) AND 2020[pdat]",
+      "explanation": "Alle öffnenden Klammern müssen geschlossen sein"
+    },
+    {
+      "error_id": "wildcard_too_short",
+      "description": "Wildcard mit weniger als 4 Zeichen vor *",
+      "wrong": "dia*",
+      "correct": "diabet*",
+      "explanation": "Minimum 4 Zeichen vor dem Wildcard *"
+    }
+  ],
+  "validation": {
+    "rules": [
+      {
+        "name": "Balancierte Klammern",
+        "rule": "Anzahl '(' == Anzahl ')'"
+      },
+      {
+        "name": "Gültige Operatoren",
+        "allowed": [
+          "AND",
+          "OR",
+          "NOT"
+        ]
+      },
+      {
+        "name": "Doppelte Anführungszeichen",
+        "rule": "Phrasen müssen in doppelten Anführungszeichen sein"
+      },
+      {
+        "name": "Datumsformat",
+        "rule": "YYYY:YYYY[pdat] oder YYYY[pdat]"
+      },
+      {
+        "name": "Wildcard-Länge",
+        "rule": "Minimum 4 Zeichen vor erstem *"
+      }
+    ]
+  },
+  "conversion_rules": {
+    "description": "Regeln zur Konvertierung von Europe PMC zu PubMed",
+    "date_conversion": [
+      {
+        "name": "Jahresbereich",
+        "europepmc": "PUB_YEAR:(2015-2025)",
+        "pubmed": "2015:2025[pdat]",
+        "rule": "Verwende : statt - und füge [pdat] hinzu"
+      }
+    ]
+  }
+}

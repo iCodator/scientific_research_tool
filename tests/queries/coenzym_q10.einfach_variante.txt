@@ -1,0 +1,7 @@
+Coenzyme Q10 OR ubiquinone
+AND
+physiolog*
+AND
+function
+AND
+(2015:2025)

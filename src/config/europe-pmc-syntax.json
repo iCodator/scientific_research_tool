@@ -1,0 +1,511 @@
+{
+  "metadata": {
+    "name": "Europe PMC Search Syntax Regelwerk",
+    "version": "1.0.0",
+    "date": "2025-12-09",
+    "source": "https://europepmc.org/searchsyntax",
+    "description": "Maschinenlesbares Regelwerk für Europe PMC Query-Kompilierung",
+    "language": "de",
+    "target_use": ["query-compiler", "ai-processing", "validation"]
+  },
+  "direct_search": {
+    "description": "Direkte Suche ohne Feldangaben",
+    "rules": [
+      {
+        "id": "simple_terms",
+        "name": "Einfache Suchbegriffe",
+        "description": "Einzelne Wörter werden in allen Feldern gesucht",
+        "examples": ["malaria", "diabetes", "cancer"],
+        "notes": "Groß-/Kleinschreibung wird ignoriert",
+        "case_sensitive": false
+      },
+      {
+        "id": "phrase_search",
+        "name": "Phrasensuche",
+        "description": "Exakte Wortfolge mit doppelten Anführungszeichen",
+        "syntax": "\"Phrase\"",
+        "examples": [
+          "\"Coenzym Q10\"",
+          "\"systematic review\"",
+          "\"CRISPR Cas9\"",
+          "\"breast cancer\""
+        ],
+        "required_quotes": "double",
+        "notes": "Einfache Anführungszeichen funktionieren NICHT!",
+        "wrong_examples": ["'Coenzym Q10'", "'systematic review'"]
+      },
+      {
+        "id": "boolean_operators",
+        "name": "Boolean-Operatoren",
+        "description": "Logische Operatoren für Querys",
+        "operators": [
+          {
+            "name": "AND",
+            "symbol": "AND",
+            "meaning": "Beide Begriffe müssen vorkommen",
+            "examples": [
+              "diabetes AND exercise",
+              "\"Coenzym Q10\" AND mitochondria"
+            ],
+            "case_sensitive": true,
+            "lowercase_invalid": true
+          },
+          {
+            "name": "OR",
+            "symbol": "OR",
+            "meaning": "Mindestens einer der Begriffe muss vorkommen",
+            "examples": [
+              "cancer OR tumor",
+              "diabetes OR \"glucose intolerance\""
+            ],
+            "case_sensitive": true
+          },
+          {
+            "name": "NOT",
+            "symbol": "NOT",
+            "meaning": "Begriff darf nicht vorkommen",
+            "examples": [
+              "cancer NOT mouse",
+              "diabetes NOT animal"
+            ],
+            "case_sensitive": true
+          }
+        ],
+        "implicit_and": true,
+        "notes": "Operatoren MÜSSEN großgeschrieben sein"
+      },
+      {
+        "id": "parentheses",
+        "name": "Klammern für Gruppierung",
+        "description": "Runde Klammern für Logik-Priorisierung",
+        "examples": [
+          "(cancer OR tumor) AND therapy",
+          "(diabetes OR \"metabolic syndrome\") AND (exercise OR \"physical activity\")",
+          "\"Coenzym Q10\" AND (mitochondria OR energy)"
+        ],
+        "type": "round",
+        "nesting_allowed": true,
+        "notes": "Klammern müssen balanciert sein"
+      },
+      {
+        "id": "wildcard_search",
+        "name": "Wildcard-Suche",
+        "description": "Verwendung von * und ? für Platzhalter",
+        "wildcards": [
+          {
+            "symbol": "*",
+            "meaning": "Beliebig viele Zeichen",
+            "examples": [
+              "carcino*",
+              "diabet*"
+            ],
+            "matches": ["carcinoma", "carcinogenic", "diabetes", "diabetic"],
+            "min_chars_before": 3,
+            "at_beginning": false
+          },
+          {
+            "symbol": "?",
+            "meaning": "Genau ein Zeichen",
+            "examples": [
+              "wom?n",
+              "colo?r"
+            ],
+            "matches": ["woman", "women", "color", "colour"]
+          }
+        ],
+        "notes": "Wildcards nicht am Wortanfang"
+      },
+      {
+        "id": "proximity_search",
+        "name": "Proximity-Suche",
+        "description": "Wörter in maximaler Nähe zueinander",
+        "syntax": "\"Begriff1 Begriff2\"~N",
+        "examples": [
+          "\"coenzyme ubiquinone\"~5",
+          "\"diabetes exercise\"~10"
+        ],
+        "meaning": "Max. N Wörter zwischen den Begriffen",
+        "notes": "Reihenfolge der Wörter ist egal"
+      }
+    ]
+  },
+  "field_search": {
+    "description": "Feldspezifische Suche mit FELDNAME:Wert",
+    "general_rules": {
+      "case_sensitivity": "Feldnamen sind CASE-SENSITIVE",
+      "spacing": "KEIN Leerzeichen zwischen Feldname und Doppelpunkt",
+      "syntax": "FELDNAME:Wert oder FELDNAME:\"Phrase\""
+    },
+    "fields": [
+      {
+        "id": "title",
+        "name": "TITLE",
+        "description": "Suche nur im Titel des Artikels",
+        "syntax": "TITLE:Begriff oder TITLE:\"Phrase\"",
+        "examples": [
+          "TITLE:cancer",
+          "TITLE:diabetes",
+          "TITLE:\"systematic review\"",
+          "TITLE:\"Coenzym Q10\""
+        ],
+        "combinable": true,
+        "example_combined": "TITLE:\"breast cancer\" AND YEAR:2020"
+      },
+      {
+        "id": "abstract",
+        "name": "ABSTRACT",
+        "description": "Suche nur im Abstract des Artikels",
+        "syntax": "ABSTRACT:Begriff oder ABSTRACT:\"Phrase\"",
+        "examples": [
+          "ABSTRACT:mitochondria",
+          "ABSTRACT:\"oxidative stress\"",
+          "ABSTRACT:\"Coenzym Q10\""
+        ]
+      },
+      {
+        "id": "author",
+        "name": "AUTH",
+        "description": "Suche nach Autor-Namen",
+        "syntax": "AUTH:Nachname oder AUTH:\"Nachname Initials\"",
+        "examples": [
+          "AUTH:Smith",
+          "AUTH:\"Smith J\"",
+          "AUTH:\"Müller M\""
+        ],
+        "format_notes": "Format: 'Nachname Initials' mit Leerzeichen",
+        "unicode_support": true
+      },
+      {
+        "id": "journal",
+        "name": "JOURNAL",
+        "description": "Suche nach Journal-Namen",
+        "syntax": "JOURNAL:Name oder JOURNAL:\"Journal Name\"",
+        "examples": [
+          "JOURNAL:Nature",
+          "JOURNAL:\"The Lancet\"",
+          "JOURNAL:\"New England Journal of Medicine\""
+        ]
+      },
+      {
+        "id": "pub_year",
+        "name": "PUB_YEAR",
+        "description": "Filterung nach Publikationsjahr oder -bereich",
+        "critical": true,
+        "syntax_single": "PUB_YEAR:YYYY",
+        "syntax_range": "PUB_YEAR:(YYYY-YYYY)",
+        "examples": [
+          {
+            "query": "PUB_YEAR:2020",
+            "meaning": "Nur Jahr 2020"
+          },
+          {
+            "query": "PUB_YEAR:2025",
+            "meaning": "Nur Jahr 2025"
+          },
+          {
+            "query": "PUB_YEAR:(2015-2025)",
+            "meaning": "Bereich 2015 bis 2025 (inklusiv)"
+          },
+          {
+            "query": "PUB_YEAR:(2020-2023)",
+            "meaning": "Bereich 2020 bis 2023"
+          }
+        ],
+        "combined_examples": [
+          "\"Coenzym Q10\" AND PUB_YEAR:(2015-2025)",
+          "diabetes AND PUB_YEAR:2020"
+        ],
+        "critical_rules": {
+          "bracket_type": "rund",
+          "separator": "Bindestrich (-)",
+          "wrong_separator": "NOT 'TO'",
+          "wrong_bracket_type": "NOT eckig"
+        },
+        "important_notes": [
+          "Bereich in RUNDEN Klammern: (YYYY-YYYY)",
+          "Bindestrich (-) zwischen Jahren",
+          "NICHT 'TO' verwenden!",
+          "NICHT eckige Klammern!"
+        ]
+      },
+      {
+        "id": "first_pdate",
+        "name": "FIRST_PDATE",
+        "description": "Erstes Publikationsdatum (Online-Vorab-Publikation)",
+        "syntax_single": "FIRST_PDATE:YYYY-MM-DD",
+        "syntax_range": "FIRST_PDATE:[YYYY-MM-DD TO YYYY-MM-DD]",
+        "examples": [
+          "FIRST_PDATE:2020-01-15",
+          "FIRST_PDATE:[2020-01-01 TO 2020-12-31]"
+        ],
+        "format_notes": "Format: YYYY-MM-DD (ISO 8601)",
+        "range_notes": "Bereich in ECKIGEN Klammern mit 'TO'",
+        "range_bracket_type": "eckig"
+      },
+      {
+        "id": "src",
+        "name": "SRC",
+        "description": "Filter nach Datenbank-Quelle",
+        "syntax": "SRC:Quelle",
+        "values": [
+          {
+            "code": "MED",
+            "name": "PubMed/MEDLINE"
+          },
+          {
+            "code": "PMC",
+            "name": "PubMed Central"
+          },
+          {
+            "code": "PPR",
+            "name": "Preprints"
+          },
+          {
+            "code": "AGR",
+            "name": "Agris"
+          },
+          {
+            "code": "CBA",
+            "name": "Chinese Biological Abstracts"
+          },
+          {
+            "code": "CTX",
+            "name": "CiteXplore"
+          },
+          {
+            "code": "ETH",
+            "name": "EthOS (UK Theses)"
+          },
+          {
+            "code": "HIR",
+            "name": "NHS Evidence"
+          },
+          {
+            "code": "PAT",
+            "name": "Patents"
+          }
+        ],
+        "examples": [
+          "cancer AND SRC:MED",
+          "\"systematic review\" AND SRC:PMC"
+        ],
+        "notes": "Quellenkürzel sind CASE-SENSITIVE"
+      },
+      {
+        "id": "issn",
+        "name": "ISSN",
+        "description": "Journal-ISSN (Print-Ausgabe)",
+        "syntax": "ISSN:XXXX-XXXX",
+        "examples": [
+          "ISSN:0028-0836"
+        ]
+      },
+      {
+        "id": "essn",
+        "name": "ESSN",
+        "description": "Journal-ESSN (Online-Ausgabe)",
+        "syntax": "ESSN:XXXX-XXXX",
+        "examples": [
+          "ESSN:1476-4687"
+        ]
+      },
+      {
+        "id": "grant_agency",
+        "name": "GRANT_AGENCY",
+        "description": "Förderorganisation",
+        "syntax": "GRANT_AGENCY:\"Organisation\"",
+        "examples": [
+          "GRANT_AGENCY:\"NIH\"",
+          "GRANT_AGENCY:\"Wellcome Trust\"",
+          "GRANT_AGENCY:\"DFG\""
+        ]
+      },
+      {
+        "id": "grant_id",
+        "name": "GRANT_ID",
+        "description": "Förderungsnummer",
+        "syntax": "GRANT_ID:Nummer",
+        "examples": [
+          "GRANT_ID:R01CA123456",
+          "GRANT_ID:203128/Z/16/Z"
+        ]
+      },
+      {
+        "id": "ext_id",
+        "name": "EXT_ID",
+        "description": "Externe Identifikatoren",
+        "syntax": "EXT_ID:ID",
+        "examples": [
+          {
+            "id": "10.1038/nature12345",
+            "type": "DOI"
+          },
+          {
+            "id": "12345678",
+            "type": "PMID"
+          }
+        ]
+      },
+      {
+        "id": "open_access",
+        "name": "OPEN_ACCESS",
+        "description": "Filter nur Open-Access-Artikel",
+        "syntax": "OPEN_ACCESS:Y",
+        "examples": [
+          "cancer AND OPEN_ACCESS:Y",
+          "\"systematic review\" AND OPEN_ACCESS:Y AND PUB_YEAR:(2020-2025)"
+        ],
+        "value": "Y"
+      },
+      {
+        "id": "has_abstract",
+        "name": "HAS_ABSTRACT",
+        "description": "Filter nur Artikel mit Abstract",
+        "syntax": "HAS_ABSTRACT:Y",
+        "examples": [
+          "diabetes AND HAS_ABSTRACT:Y"
+        ],
+        "value": "Y"
+      },
+      {
+        "id": "has_pdf",
+        "name": "HAS_PDF",
+        "description": "Filter nur Artikel mit verfügbarem PDF",
+        "syntax": "HAS_PDF:Y",
+        "examples": [
+          "cancer AND HAS_PDF:Y"
+        ],
+        "value": "Y"
+      },
+      {
+        "id": "in_epmc",
+        "name": "IN_EPMC",
+        "description": "Filter nur Artikel mit Volltext in Europe PMC",
+        "syntax": "IN_EPMC:Y",
+        "examples": [
+          "diabetes AND IN_EPMC:Y"
+        ],
+        "value": "Y"
+      }
+    ]
+  },
+  "common_errors": [
+    {
+      "error_id": "wrong_quotes",
+      "description": "Einfache Anführungszeichen statt doppelte",
+      "wrong": "'Coenzym Q10' AND PUB_YEAR:(2015-2025)",
+      "correct": "\"Coenzym Q10\" AND PUB_YEAR:(2015-2025)",
+      "explanation": "Europe PMC unterstützt nur doppelte Anführungszeichen!"
+    },
+    {
+      "error_id": "wrong_date_format",
+      "description": "Falsches Datumsformat mit 'TO' statt Bindestrich",
+      "wrong": [
+        "PUB_YEAR:(2015 TO 2025)",
+        "PUB_YEAR:[2015-2025]",
+        "PUB_YEAR:2015:2025[pdat]"
+      ],
+      "correct": "PUB_YEAR:(2015-2025)",
+      "explanation": "Nur Bindestrich (-) in runden Klammern funktioniert!"
+    },
+    {
+      "error_id": "lowercase_operators",
+      "description": "Kleingeschriebene Boolean-Operatoren",
+      "wrong": "diabetes and exercise",
+      "correct": "diabetes AND exercise",
+      "explanation": "'and' wird als normales Wort gesucht, nicht als Operator!"
+    },
+    {
+      "error_id": "spacing_in_field",
+      "description": "Leerzeichen in Feldnamen oder um Doppelpunkt",
+      "wrong": [
+        "PUB_YEAR : (2015-2025)",
+        "PUB_ YEAR:(2015-2025)"
+      ],
+      "correct": "PUB_YEAR:(2015-2025)",
+      "explanation": "Kein Leerzeichen vor/nach Doppelpunkt oder im Feldnamen!"
+    },
+    {
+      "error_id": "unbalanced_parentheses",
+      "description": "Unausgeglichene Klammern",
+      "wrong": "(diabetes OR exercise AND PUB_YEAR:(2020-2025)",
+      "correct": "(diabetes OR exercise) AND PUB_YEAR:(2020-2025)",
+      "explanation": "Alle öffnenden Klammern müssen geschlossen sein!"
+    },
+    {
+      "error_id": "outer_parentheses_around_pub_year",
+      "description": "Unnötige äußere Klammern um PUB_YEAR",
+      "wrong": "(PUB_YEAR:(2015-2025))",
+      "correct": "PUB_YEAR:(2015-2025)",
+      "explanation": "Äußere Klammern um PUB_YEAR-Feld sind unnötig!"
+    }
+  ],
+  "conversion_rules": {
+    "description": "Regeln zur Konvertierung von universellen Queries zu Europe PMC Format",
+    "from_pubmed_to_europepmc": [
+      {
+        "name": "Anführungszeichen",
+        "pubmed": "'Coenzym Q10'",
+        "europepmc": "\"Coenzym Q10\"",
+        "rule": "Ersetze einfache (') durch doppelte (\") Anführungszeichen"
+      },
+      {
+        "name": "Datumsbereich",
+        "pubmed": "(2015:2025[pdat])",
+        "europepmc": "PUB_YEAR:(2015-2025)",
+        "rule": "Ersetze (YYYY:YYYY[pdat]) durch PUB_YEAR:(YYYY-YYYY)",
+        "steps": [
+          "1. Erkenne Muster: (ZAHL:ZAHL[pdat])",
+          "2. Ersetze durch: PUB_YEAR:(ZAHL-ZAHL)",
+          "3. Nutze Bindestrich (-), nicht 'TO'",
+          "4. Entferne äußere Klammern"
+        ]
+      },
+      {
+        "name": "Vollständiges Beispiel",
+        "pubmed": "'Coenzym Q10' AND (2015:2025[pdat])",
+        "europepmc": "\"Coenzym Q10\" AND PUB_YEAR:(2015-2025)",
+        "steps": [
+          "1. Ersetze (') mit (\")",
+          "2. Ersetze (2015:2025[pdat]) mit PUB_YEAR:(2015-2025)",
+          "3. Normalisiere Whitespace"
+        ]
+      }
+    ]
+  },
+  "validation": {
+    "rules": [
+      {
+        "name": "Balancierte Klammern",
+        "rule": "Anzahl '(' == Anzahl ')'",
+        "error": "Klammern nicht balanciert!"
+      },
+      {
+        "name": "Gültige Operatoren",
+        "allowed": ["AND", "OR", "NOT"],
+        "rule": "Nur AND, OR, NOT (Großbuchstaben)",
+        "error": "Ungültiger Boolean-Operator"
+      },
+      {
+        "name": "Doppelte Anführungszeichen",
+        "rule": "Phrasen müssen in doppelten Anführungszeichen sein",
+        "error": "Einfache Anführungszeichen nicht unterstützt"
+      },
+      {
+        "name": "Datumsformat",
+        "rule": "PUB_YEAR:(YYYY-YYYY) mit Bindestrich",
+        "error": "Falsches Datumsformat"
+      },
+      {
+        "name": "Feldnamen",
+        "rule": "Feldnamen müssen bekannt sein",
+        "known_fields": [
+          "TITLE", "ABSTRACT", "AUTH", "JOURNAL", "PUB_YEAR",
+          "FIRST_PDATE", "SRC", "ISSN", "ESSN", "OPEN_ACCESS",
+          "HAS_ABSTRACT", "HAS_PDF", "IN_EPMC"
+        ],
+        "error": "Unbekanntes Feldname"
+      }
+    ]
+  }
+}

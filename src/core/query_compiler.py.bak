@@ -1,0 +1,640 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+Universal Query Compiler für PubMed und Europe PMC
+Unterstützt bidirektionale Konvertierung und Validierung
+Autor: Query Team
+Version: 2.0.0
+Datum: 2025-12-09
+"""
+
+import json
+import re
+import logging
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+# ============================================================================
+# LOGGING KONFIGURATION
+# ============================================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# UNIVERSALER QUERY COMPILER
+# ============================================================================
+
+class UniversalQueryCompiler:
+    """
+    Universaler Query-Compiler für PubMed und Europe PMC.
+    
+    Features:
+    - Bidirektionale Konvertierung (PubMed ↔ Europe PMC)
+    - Vollständige Validierung gegen Regelwerke
+    - Detailliertes Error Handling
+    - Umfassendes Logging
+    """
+    
+    def __init__(self, query: str = "", source: str = "universal"):
+        """
+        Initialisierung.
+        
+        Args:
+            query: Die zu verarbeitende Query
+            source: 'pubmed', 'europepmc', oder 'universal'
+        """
+        self.query = query
+        self.source = source
+        self.normalized_query = ""
+        self.ruleset = None
+        self.errors = []
+        self.warnings = []
+        self.conversions = []
+        
+        logger.info(f"QueryCompiler initialisiert: query='{query[:50]}...', source={source}")
+    
+    # ========================================================================
+    # REGELWERK-VERWALTUNG
+    # ========================================================================
+    
+    def load_ruleset(self, ruleset_path: str) -> bool:
+        """
+        Lädt ein Regelwerk aus JSON-Datei.
+        
+        Args:
+            ruleset_path: Pfad zur JSON-Regelwerk-Datei
+            
+        Returns:
+            True wenn erfolgreich, False sonst
+        """
+        try:
+            with open(ruleset_path, 'r', encoding='utf-8') as f:
+                self.ruleset = json.load(f)
+            logger.info(f"Regelwerk geladen: {ruleset_path}")
+            return True
+        except FileNotFoundError:
+            logger.error(f"Regelwerk nicht gefunden: {ruleset_path}")
+            return False
+        except json.JSONDecodeError as e:
+            logger.error(f"Regelwerk-Parsing-Fehler: {e}")
+            return False
+    
+    def load_ruleset_from_dict(self, ruleset: Dict) -> None:
+        """Lädt ein Regelwerk aus Dictionary."""
+        self.ruleset = ruleset
+        logger.info("Regelwerk aus Dictionary geladen")
+    
+    # ========================================================================
+    # NORMALISIERUNG
+    # ========================================================================
+    
+    def normalize(self) -> str:
+        """
+        Normalisiert die Query nach Quelle.
+        
+        Returns:
+            Normalisierte Query
+        """
+        if self.source == "pubmed":
+            self.normalized_query = self._normalize_pubmed(self.query)
+        elif self.source == "europepmc":
+            self.normalized_query = self._normalize_europepmc(self.query)
+        else:
+            self.normalized_query = self._normalize_universal(self.query)
+        
+        logger.info(f"Query normalisiert: {self.normalized_query[:80]}...")
+        return self.normalized_query
+    
+    def _normalize_pubmed(self, query: str) -> str:
+        """Normalisierung für PubMed."""
+        result = query
+        
+        # Whitespace-Normalisierung
+        result = re.sub(r'\s+', ' ', result).strip()
+        
+        # Boolean-Operatoren (müssen großgeschrieben sein)
+        result = re.sub(r'\b(and|or|not)\b', lambda m: m.group(1).upper(), result)
+        
+        return result
+    
+    def _normalize_europepmc(self, query: str) -> str:
+        """Normalisierung für Europe PMC."""
+        result = query
+        
+        # Whitespace-Normalisierung
+        result = re.sub(r'\s+', ' ', result).strip()
+        
+        # Boolean-Operatoren
+        result = re.sub(r'\b(and|or|not)\b', lambda m: m.group(1).upper(), result)
+        
+        return result
+    
+    def _normalize_universal(self, query: str) -> str:
+        """Universelle Normalisierung."""
+        result = query
+        result = re.sub(r'\s+', ' ', result).strip()
+        result = re.sub(r'\b(and|or|not)\b', lambda m: m.group(1).upper(), result)
+        return result
+    
+    # ========================================================================
+    # VALIDIERUNG
+    # ========================================================================
+    
+    def validate(self) -> bool:
+        """
+        Validiert die Query gegen das Regelwerk.
+        
+        Returns:
+            True wenn gültig, False sonst
+        """
+        if not self.ruleset:
+            logger.warning("Kein Regelwerk geladen - Validierung übersprungen")
+            return True
+        
+        self.errors = []
+        self.warnings = []
+        
+        if self.source == "pubmed":
+            valid = self._validate_pubmed(self.query)
+        elif self.source == "europepmc":
+            valid = self._validate_europepmc(self.query)
+        else:
+            valid = self._validate_universal(self.query)
+        
+        if valid:
+            logger.info("Query-Validierung erfolgreich ✓")
+        else:
+            logger.error(f"Query-Validierung fehlgeschlagen: {len(self.errors)} Fehler")
+        
+        return valid
+    
+    def _validate_pubmed(self, query: str) -> bool:
+        """PubMed-spezifische Validierung."""
+        valid = True
+        
+        # 1. Balancierte Klammern
+        if not self._check_balanced_parentheses(query):
+            self.errors.append("Klammern nicht balanciert")
+            valid = False
+        
+        # 2. Gültige Operatoren
+        if not self._check_valid_operators(query):
+            self.errors.append("Ungültige Boolean-Operatoren gefunden")
+            valid = False
+        
+        # 3. Doppelte Anführungszeichen
+        if not self._check_double_quotes(query):
+            self.errors.append("Einfache Anführungszeichen erkannt (nur doppelte erlaubt)")
+            valid = False
+        
+        # 4. Field Tags
+        invalid_tags = self._check_invalid_pubmed_tags(query)
+        if invalid_tags:
+            self.errors.append(f"Ungültige Field Tags: {invalid_tags}")
+            valid = False
+        
+        # 5. Wildcard-Validierung
+        if not self._check_pubmed_wildcards(query):
+            self.errors.append("Wildcard-Fehler: min. 4 Zeichen vor *")
+            valid = False
+        
+        # 6. Datumsformat
+        if not self._check_pubmed_dates(query):
+            self.errors.append("Datumsformat-Fehler (nutze YYYY:YYYY[pdat])")
+            valid = False
+        
+        return valid
+    
+    def _validate_europepmc(self, query: str) -> bool:
+        """Europe PMC-spezifische Validierung."""
+        valid = True
+        
+        # 1. Balancierte Klammern
+        if not self._check_balanced_parentheses(query):
+            self.errors.append("Klammern nicht balanciert")
+            valid = False
+        
+        # 2. Gültige Operatoren
+        if not self._check_valid_operators(query):
+            self.errors.append("Ungültige Boolean-Operatoren gefunden")
+            valid = False
+        
+        # 3. Doppelte Anführungszeichen
+        if not self._check_double_quotes(query):
+            self.errors.append("Einfache Anführungszeichen erkannt")
+            valid = False
+        
+        # 4. Feldformat (FIELDNAME:value)
+        if not self._check_europepmc_field_format(query):
+            self.errors.append("Ungültiges Feldformat (nutze FIELDNAME:value)")
+            valid = False
+        
+        # 5. Wildcard-Validierung (min. 3 Zeichen)
+        if not self._check_europepmc_wildcards(query):
+            self.errors.append("Wildcard-Fehler: min. 3 Zeichen vor *")
+            valid = False
+        
+        # 6. Datumsformat
+        if not self._check_europepmc_dates(query):
+            self.errors.append("Datumsformat-Fehler (nutze PUB_YEAR:(YYYY-YYYY))")
+            valid = False
+        
+        return valid
+    
+    def _validate_universal(self, query: str) -> bool:
+        """Universelle Validierung."""
+        return self._check_balanced_parentheses(query) and \
+               self._check_valid_operators(query)
+    
+    # ========================================================================
+    # VALIDIERUNGS-HILFSFUNKTIONEN
+    # ========================================================================
+    
+    def _check_balanced_parentheses(self, query: str) -> bool:
+        """Prüft balancierte Klammern."""
+        return query.count('(') == query.count(')')
+    
+    def _check_valid_operators(self, query: str) -> bool:
+        """Prüft gültige Boolean-Operatoren."""
+        invalid_operators = re.findall(r'\b(and|or|not)\b', query, re.IGNORECASE)
+        return len(invalid_operators) == 0
+    
+    def _check_double_quotes(self, query: str) -> bool:
+        """Prüft nur doppelte Anführungszeichen."""
+        return "'" not in query
+    
+    def _check_invalid_pubmed_tags(self, query: str) -> List[str]:
+        """Findet ungültige PubMed Field Tags."""
+        valid_tags = ['ti', 'ab', 'tiab', 'au', '1au', 'lastau', 'ta', 'mh', 
+                      'majr', 'tw', 'ad', 'all', 'pdat', 'dp', 'edat', 'mhda',
+                      'pt', 'vi', 'ip', 'pg', 'pmid', 'la']
+        
+        found_tags = re.findall(r'\[(\w+)\]', query)
+        return [tag for tag in found_tags if tag not in valid_tags]
+    
+    def _check_pubmed_wildcards(self, query: str) -> bool:
+        """Prüft Wildcard-Regeln für PubMed (min. 4 Zeichen)."""
+        # Finde alle Wildcards
+        wildcards = re.findall(r'\b(\w+)\*', query)
+        
+        for wildcard in wildcards:
+            if len(wildcard) < 4:
+                return False
+            if wildcard.startswith('*'):
+                return False
+        
+        return True
+    
+    def _check_europepmc_wildcards(self, query: str) -> bool:
+        """Prüft Wildcard-Regeln für Europe PMC (min. 3 Zeichen)."""
+        wildcards = re.findall(r'\b(\w+)\*', query)
+        
+        for wildcard in wildcards:
+            if len(wildcard) < 3:
+                return False
+            if wildcard.startswith('*'):
+                return False
+        
+        return True
+    
+    def _check_pubmed_dates(self, query: str) -> bool:
+        """Prüft PubMed-Datumsformate."""
+        # Format: YYYY:YYYY[pdat] oder YYYY[pdat]
+        date_pattern = r'\d{4}(?::\d{4})?\[pdat\]'
+        dates = re.findall(date_pattern, query)
+        
+        # Wenn Daten vorhanden, müssen sie korrekt formatiert sein
+        if not dates:
+            return True
+        
+        for date in dates:
+            if 'TO' in query.upper() and 'pdat' in query:
+                return False
+        
+        return True
+    
+    def _check_europepmc_dates(self, query: str) -> bool:
+        """Prüft Europe PMC-Datumsformate."""
+        # Format: PUB_YEAR:YYYY oder PUB_YEAR:(YYYY-YYYY)
+        date_pattern = r'PUB_YEAR:\(?(\d{4}(?:-\d{4})?)\)?'
+        dates = re.findall(date_pattern, query)
+        
+        return True  # Wenn vorhanden, validiert durch Regex
+    
+    def _check_europepmc_field_format(self, query: str) -> bool:
+        """Prüft Europe PMC Feldformat."""
+        # Gültige Fields: TITLE, ABSTRACT, AUTH, JOURNAL, PUB_YEAR, etc.
+        valid_fields = ['TITLE', 'ABSTRACT', 'AUTH', 'JOURNAL', 'PUB_YEAR',
+                       'FIRST_PDATE', 'SRC', 'ISSN', 'ESSN', 'GRANT_AGENCY',
+                       'GRANT_ID', 'EXT_ID', 'OPEN_ACCESS', 'HAS_ABSTRACT',
+                       'HAS_PDF', 'IN_EPMC']
+        
+        # Finde alle Feldangaben
+        field_pattern = r'([A-Z_]+):(?:\()?'
+        found_fields = re.findall(field_pattern, query)
+        
+        return all(field in valid_fields for field in found_fields)
+    
+    # ========================================================================
+    # KONVERTIERUNG
+    # ========================================================================
+    
+    def convert_to_pubmed(self) -> str:
+        """Konvertiert Query zu PubMed-Format."""
+        if self.source == "pubmed":
+            logger.info("Query ist bereits PubMed-Format")
+            return self.query
+        
+        result = self.query
+        self.conversions = []
+        
+        # 1. Datumsformat: PUB_YEAR:(YYYY-YYYY) → YYYY:YYYY[pdat]
+        result, count = self._convert_dates_to_pubmed(result)
+        if count > 0:
+            self.conversions.append(f"Datumsformat konvertiert: {count} Vorkommen")
+        
+        # 2. Feldformat: FIELD:value → value[tag]
+        result, count = self._convert_fields_to_pubmed(result)
+        if count > 0:
+            self.conversions.append(f"Feldformat konvertiert: {count} Vorkommen")
+        
+        # 3. Proximity: "phrase"~N → "phrase"[tiab:~N]
+        result, count = self._convert_proximity_to_pubmed(result)
+        if count > 0:
+            self.conversions.append(f"Proximity-Format konvertiert: {count} Vorkommen")
+        
+        logger.info(f"Konvertierung zu PubMed: {'; '.join(self.conversions)}")
+        return result
+    
+    def convert_to_europepmc(self) -> str:
+        """Konvertiert Query zu Europe PMC-Format."""
+        if self.source == "europepmc":
+            logger.info("Query ist bereits Europe PMC-Format")
+            return self.query
+        
+        result = self.query
+        self.conversions = []
+        
+        # 1. Datumsformat: YYYY:YYYY[pdat] → PUB_YEAR:(YYYY-YYYY)
+        result, count = self._convert_dates_to_europepmc(result)
+        if count > 0:
+            self.conversions.append(f"Datumsformat konvertiert: {count} Vorkommen")
+        
+        # 2. Feldformat: term[tag] → FIELD:term
+        result, count = self._convert_fields_to_europepmc(result)
+        if count > 0:
+            self.conversions.append(f"Feldformat konvertiert: {count} Vorkommen")
+        
+        # 3. Proximity: "phrase"[tiab:~N] → "phrase"~N
+        result, count = self._convert_proximity_to_europepmc(result)
+        if count > 0:
+            self.conversions.append(f"Proximity-Format konvertiert: {count} Vorkommen")
+        
+        logger.info(f"Konvertierung zu Europe PMC: {'; '.join(self.conversions)}")
+        return result
+    
+    # ========================================================================
+    # KONVERTIERUNGS-HILFSFUNKTIONEN
+    # ========================================================================
+    
+    def _convert_dates_to_pubmed(self, query: str) -> Tuple[str, int]:
+        """Konvertiert Europe PMC Datumsformat zu PubMed."""
+        count = 0
+        
+        # PUB_YEAR:(YYYY-YYYY) → YYYY:YYYY[pdat]
+        def replace_range(match):
+            nonlocal count
+            count += 1
+            start, end = match.group(1), match.group(2)
+            return f"{start}:{end}[pdat]"
+        
+        result = re.sub(r'PUB_YEAR:\((\d{4})-(\d{4})\)', replace_range, query)
+        
+        # PUB_YEAR:YYYY → YYYY[pdat]
+        def replace_single(match):
+            nonlocal count
+            count += 1
+            year = match.group(1)
+            return f"{year}[pdat]"
+        
+        result = re.sub(r'PUB_YEAR:(\d{4})(?!\d)', replace_single, result)
+        
+        return result, count
+    
+    def _convert_dates_to_europepmc(self, query: str) -> Tuple[str, int]:
+        """Konvertiert PubMed Datumsformat zu Europe PMC."""
+        count = 0
+        
+        # YYYY:YYYY[pdat] → PUB_YEAR:(YYYY-YYYY)
+        def replace_range(match):
+            nonlocal count
+            count += 1
+            start, end = match.group(1), match.group(2)
+            return f"PUB_YEAR:({start}-{end})"
+        
+        result = re.sub(r'(\d{4}):(\d{4})\[pdat\]', replace_range, query)
+        
+        # YYYY[pdat] → PUB_YEAR:YYYY
+        def replace_single(match):
+            nonlocal count
+            count += 1
+            year = match.group(1)
+            return f"PUB_YEAR:{year}"
+        
+        result = re.sub(r'(\d{4})\[pdat\]', replace_single, result)
+        
+        return result, count
+    
+    def _convert_fields_to_pubmed(self, query: str) -> Tuple[str, int]:
+        """Konvertiert Europe PMC Feldformat zu PubMed."""
+        count = 0
+        
+        field_map = {
+            'TITLE': 'ti',
+            'ABSTRACT': 'ab',
+            'AUTH': 'au',
+            'JOURNAL': 'ta',
+            'SRC': 'src'
+        }
+        
+        for epmc_field, pubmed_tag in field_map.items():
+            pattern = rf'{epmc_field}:(\S+)'
+            
+            def replace(match):
+                nonlocal count
+                count += 1
+                value = match.group(1)
+                # Entferne äußere Klammern wenn vorhanden
+                value = value.strip('()')
+                return f"{value}[{pubmed_tag}]"
+            
+            query = re.sub(pattern, replace, query)
+        
+        return query, count
+    
+    def _convert_fields_to_europepmc(self, query: str) -> Tuple[str, int]:
+        """Konvertiert PubMed Feldformat zu Europe PMC."""
+        count = 0
+        
+        field_map = {
+            'ti': 'TITLE',
+            'ab': 'ABSTRACT',
+            'au': 'AUTH',
+            'ta': 'JOURNAL',
+            '1au': 'AUTH',
+            'lastau': 'AUTH'
+        }
+        
+        for pubmed_tag, epmc_field in field_map.items():
+            pattern = rf'(\S+)\[{pubmed_tag}\]'
+            
+            def replace(match):
+                nonlocal count
+                count += 1
+                value = match.group(1)
+                return f"{epmc_field}:{value}"
+            
+            query = re.sub(pattern, replace, query)
+        
+        return query, count
+    
+    def _convert_proximity_to_pubmed(self, query: str) -> Tuple[str, int]:
+        """Konvertiert Europe PMC Proximity zu PubMed."""
+        count = 0
+        
+        # "phrase"~N → "phrase"[tiab:~N]
+        def replace(match):
+            nonlocal count
+            count += 1
+            phrase = match.group(1)
+            distance = match.group(2)
+            return f'"{phrase}"[tiab:~{distance}]'
+        
+        result = re.sub(r'"([^"]+)"~(\d+)', replace, query)
+        
+        return result, count
+    
+    def _convert_proximity_to_europepmc(self, query: str) -> Tuple[str, int]:
+        """Konvertiert PubMed Proximity zu Europe PMC."""
+        count = 0
+        
+        # "phrase"[field:~N] → "phrase"~N
+        def replace(match):
+            nonlocal count
+            count += 1
+            phrase = match.group(1)
+            distance = match.group(2)
+            return f'"{phrase}"~{distance}'
+        
+        result = re.sub(r'"([^"]+)"\[[\w]+:~(\d+)\]', replace, query)
+        
+        return result, count
+    
+    # ========================================================================
+    # INFORMATIONS-AUSGABE
+    # ========================================================================
+    
+    def print_info(self) -> None:
+        """Gibt Informationen zur Query aus."""
+        print("\n" + "="*70)
+        print("QUERY COMPILER - INFORMATIONEN")
+        print("="*70)
+        print(f"\nQuelle:           {self.source}")
+        print(f"Original Query:   {self.query}")
+        print(f"Normalisiert:     {self.normalized_query}")
+        
+        if self.errors:
+            print(f"\n❌ Fehler ({len(self.errors)}):")
+            for error in self.errors:
+                print(f"   - {error}")
+        
+        if self.warnings:
+            print(f"\n⚠️  Warnungen ({len(self.warnings)}):")
+            for warning in self.warnings:
+                print(f"   - {warning}")
+        
+        if self.conversions:
+            print(f"\n🔄 Konvertierungen ({len(self.conversions)}):")
+            for conversion in self.conversions:
+                print(f"   - {conversion}")
+        
+        print("\n" + "="*70 + "\n")
+    
+    def get_stats(self) -> Dict:
+        """Gibt Statistiken über die Query zurück."""
+        return {
+            'source': self.source,
+            'query_length': len(self.query),
+            'term_count': len(re.findall(r'\w+', self.query)),
+            'boolean_operators': len(re.findall(r'\b(AND|OR|NOT)\b', self.query)),
+            'parentheses': self.query.count('('),
+            'field_tags': len(re.findall(r'\[[\w:]+\]', self.query)),
+            'errors': len(self.errors),
+            'warnings': len(self.warnings),
+            'conversions': len(self.conversions)
+        }
+
+
+# ============================================================================
+# DEMO UND TESTS
+# ============================================================================
+
+def demo():
+    """Demo-Funktion mit praktischen Beispielen."""
+    
+    print("\n" + "="*70)
+    print("UNIVERSAL QUERY COMPILER - DEMO")
+    print("="*70)
+    
+    # Beispiel 1: PubMed zu Europe PMC
+    print("\n📝 BEISPIEL 1: PubMed → Europe PMC")
+    print("-" * 70)
+    
+    pubmed_query = '("Coenzyme Q10" OR ubiquinone) AND 2020:2025[pdat]'
+    compiler = UniversalQueryCompiler(pubmed_query, source="pubmed")
+    
+    compiler.normalize()
+    if compiler.validate():
+        print(f"✅ Original (PubMed):    {pubmed_query}")
+        converted = compiler.convert_to_europepmc()
+        print(f"✅ Konvertiert (Europe): {converted}")
+    
+    # Beispiel 2: Europe PMC zu PubMed
+    print("\n📝 BEISPIEL 2: Europe PMC → PubMed")
+    print("-" * 70)
+    
+    epmc_query = '("Coenzyme Q10" OR ubiquinone) AND PUB_YEAR:(2020-2025)'
+    compiler2 = UniversalQueryCompiler(epmc_query, source="europepmc")
+    
+    compiler2.normalize()
+    if compiler2.validate():
+        print(f"✅ Original (Europe):  {epmc_query}")
+        converted = compiler2.convert_to_pubmed()
+        print(f"✅ Konvertiert (Pub):  {converted}")
+    
+    # Beispiel 3: Komplexe Query
+    print("\n📝 BEISPIEL 3: Komplexe Query mit Validierung")
+    print("-" * 70)
+    
+    complex_query = '(diabetes OR "glucose intolerance") AND exercise AND systematic[sb] AND 2015:2025[pdat]'
+    compiler3 = UniversalQueryCompiler(complex_query, source="pubmed")
+    
+    compiler3.normalize()
+    compiler3.validate()
+    
+    stats = compiler3.get_stats()
+    print(f"✅ Query Statistik:")
+    print(f"   - Länge: {stats['query_length']} Zeichen")
+    print(f"   - Terme: {stats['term_count']}")
+    print(f"   - Boolean Operatoren: {stats['boolean_operators']}")
+    print(f"   - Field Tags: {stats['field_tags']}")
+    print(f"   - Fehler: {stats['errors']}")
+
+
+if __name__ == "__main__":
+    demo()

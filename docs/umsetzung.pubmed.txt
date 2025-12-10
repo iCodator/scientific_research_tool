@@ -1,0 +1,5 @@
+"Coenzym Q10" AND (2015:2025[pdat]) -> ("Coenzyme Q10") AND (2015:2025[pdat])
+diabetes AND exercise -> (diabetes) AND (exercise)
+cancer NOT mouse -> (cancer) NOT (mouse)
+("Coenzyme Q10" OR ubiquinone) AND 2020:2025[pdat] -> (("Coenzyme Q10" OR ubiquinone)) AND (2020:2025[pdat])
+kidney allograft AND transplant -> (kidney allograft) AND (transplant)
