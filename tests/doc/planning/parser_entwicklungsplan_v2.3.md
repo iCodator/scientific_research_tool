@@ -1,4 +1,4 @@
-# QUERY PARSER v2.3 - Entwicklungsplan
+# Parser Entwicklungsplan v2.3
 **Datum:** 10. Dezember 2025, 19:40 CET  
 **Status:** READY FOR IMPLEMENTATION  
 **Version:** 2.3 (Planning Phase)
