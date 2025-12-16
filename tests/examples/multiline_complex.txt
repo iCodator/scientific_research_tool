@@ -1,0 +1,5 @@
+# Multi-line complex example
+# Combining treatment terms with cancer terms
+("cancer" OR "tumor" OR "neoplasm")
+AND
+("treatment" OR "therapy" OR "intervention")

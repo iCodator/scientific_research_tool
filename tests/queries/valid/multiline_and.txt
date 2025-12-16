@@ -1,0 +1,3 @@
+"cancer" AND "treatment"
+AND
+"effective"

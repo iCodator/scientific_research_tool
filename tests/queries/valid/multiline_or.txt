@@ -1,0 +1,5 @@
+"cancer"
+OR
+"tumor"
+OR
+"neoplasm"

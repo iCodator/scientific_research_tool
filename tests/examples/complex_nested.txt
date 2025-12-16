@@ -1,0 +1,2 @@
+# Complex nested example with multiple operators
+(("cancer" OR "tumor") AND ("treatment" OR "therapy")) NOT ("benign" OR "non-malignant")

@@ -1,0 +1,7 @@
+# Multi-line simple example
+# Three terms with OR operator
+"cancer"
+OR
+"tumor"
+OR
+"neoplasm"
