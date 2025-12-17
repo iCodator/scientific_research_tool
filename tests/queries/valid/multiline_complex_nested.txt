@@ -1,0 +1,3 @@
+(("cancer" OR "tumor") AND ("treatment" OR "therapy"))
+NOT
+"benign"
