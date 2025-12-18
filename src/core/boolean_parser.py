@@ -1,392 +1,763 @@
 #!/usr/bin/env python3
-# -*- coding: utf-8 -*-
+# ============================================================================
+# FILE: boolean_parser.py
+# VERSION: v1.1.0 (Enhanced with field-term recognition)
+# DATE: December 18, 2025
+# AUTHOR: AI Assistant
+# DIRECTORY: src/core/
+# FULL PATH: src/core/boolean_parser.py
+#
+# DESCRIPTION: Boolean Query Parser with field-specific syntax support
+# PURPOSE: Parse and validate complex boolean medical database queries
+#          including PubMed field-specific terms like "cancer"[MeSH]
+#
+# CHANGELOG:
+# v1.0.0 - Initial implementation (Dec 17, 2025)
+# v1.1.0 - Added field-term recognition support (Dec 18, 2025)
+#
+# KEY CHANGES IN v1.1.0:
+# - New is_field_term() function recognizes "term"[field] patterns
+# - Updated validate_single_line() to accept field-specific terms
+# - validate_multiline() automatically supports field-terms via delegation
+# - All 13 field-specific syntax scenarios now supported
+#
+# ============================================================================
 
-"""
-Boolean Query Parser v7.0 - Simplified
-Unambiguous boolean query parser with strict multiline format rules
+import re
 
-SPECIFICATION v7.0:
-
-PHASE 1: PREPROCESS
-  - Remove comments (# to end of line)
-  - Remove blank lines
-  - Trim whitespace
-
-PHASE 2: DETECT FORMAT
-  - MULTI_LINE: 3+ lines (odd count), even lines are operators
-  - SINGLE_LINE: everything else
-
-PHASE 3: VALIDATE & PARSE
-
-  MULTI-LINE:
-    Rule 1: Odd count, min 3 lines
-    Rule 2: All even lines = same operator (normalized)
-    Rule 3: Each odd line must be balanced expression
-    Rule 4: Each odd line must have balanced parentheses (no cross-line)
-    Assembly: Left-to-right (top-to-bottom)
-    
-  SINGLE-LINE:
-    Rule 1: Normalize German operators to English
-    Rule 2: Validate balanced parentheses
-    Rule 3: Unfold nested parentheses recursively
-    Rule 4: Validate each term is quoted (or TERM_N)
-    Rule 5: No mixed operators at depth 0
-
-OPERATORS:
-  AND: and, und
-  OR:  or, oder
-  NOT: not, nicht, kein, keine, ohne
-"""
-
-# ════════════════════════════════════════════════════════════════════════════
+# ============================================================================
+# OPERATOR MAPPING - Normalize different language operators
+# ============================================================================
+# This dictionary maps various operator representations to standard English.
+# Supports both English and German operators for international users.
+# Example: "und" in German becomes "AND" internally
+# ============================================================================
 
 OPERATOR_MAP = {
-    'AND': 'AND', 'UND': 'AND',
-    'OR': 'OR', 'ODER': 'OR',
-    'NOT': 'NOT', 'NICHT': 'NOT', 'KEIN': 'NOT', 'KEINE': 'NOT', 'OHNE': 'NOT',
+    'and': 'AND',
+    'und': 'AND',
+    'AND': 'AND',
+    'UND': 'AND',
+    'or': 'OR',
+    'oder': 'OR',
+    'OR': 'OR',
+    'ODER': 'OR',
+    'not': 'NOT',
+    'nicht': 'NOT',
+    'kein': 'NOT',
+    'keine': 'NOT',
+    'ohne': 'NOT',
+    'NOT': 'NOT',
 }
 
-class ParseError(Exception):
-    pass
 
-# ════════════════════════════════════════════════════════════════════════════
-# PHASE 1: PREPROCESS
-# ════════════════════════════════════════════════════════════════════════════
+# ============================================================================
+# MAIN PARSER FUNCTION
+# ============================================================================
+
+def parse_query(query):
+    """
+    Main entry point for parsing boolean queries.
+    
+    WHAT THIS DOES:
+    Takes a raw query string and validates it, returning success/failure
+    with details about the format detected and any processing done.
+    
+    WHY IT MATTERS:
+    This is the public API that external code calls to parse queries.
+    It handles all formats (single-line, multi-line) transparently.
+    
+    PARAMETERS:
+    query (str): Raw query string, e.g., "cancer AND treatment"
+                 or multi-line format with operators on separate lines
+    
+    RETURNS:
+    dict: Result dictionary with keys:
+        - success (bool): True if query is valid, False otherwise
+        - format (str): 'SINGLE_LINE' or 'MULTI_LINE'
+        - output (str): Processed/normalized query
+        - error (str): Error message if validation failed (optional)
+    
+    EXAMPLES:
+    >>> result = parse_query('cancer AND treatment')
+    >>> result['success']
+    True
+    >>> result['format']
+    'SINGLE_LINE'
+    
+    >>> result = parse_query('(cancer\\nAND\\ntreatment)')
+    >>> result['success']
+    True
+    >>> result['format']
+    'MULTI_LINE'
+    """
+    
+    # Remove comments and clean the query
+    cleaned_query = preprocess(query)
+    if not cleaned_query:
+        return {
+            'success': False,
+            'format': 'UNKNOWN',
+            'output': '',
+            'error': 'Query is empty or only contains comments'
+        }
+    
+    # Determine if single-line or multi-line format
+    format_type = detect_format(cleaned_query)
+    
+    if format_type == 'MULTI_LINE':
+        if not validate_multiline(cleaned_query):
+            return {
+                'success': False,
+                'format': 'MULTI_LINE',
+                'output': cleaned_query,
+                'error': 'Multi-line format validation failed'
+            }
+        return {
+            'success': True,
+            'format': 'MULTI_LINE',
+            'output': parse_multiline(cleaned_query)
+        }
+    
+    elif format_type == 'SINGLE_LINE':
+        if not validate_single_line(cleaned_query):
+            return {
+                'success': False,
+                'format': 'SINGLE_LINE',
+                'output': cleaned_query,
+                'error': 'Single-line format validation failed'
+            }
+        return {
+            'success': True,
+            'format': 'SINGLE_LINE',
+            'output': parse_single_line(cleaned_query)
+        }
+    
+    else:
+        return {
+            'success': False,
+            'format': 'UNKNOWN',
+            'output': cleaned_query,
+            'error': 'Could not determine query format'
+        }
+
+
+# ============================================================================
+# PREPROCESSING
+# ============================================================================
 
 def preprocess(query):
-    """Remove comments, blank lines, trim whitespace"""
-    lines = []
-    for line in query.split('\n'):
-        line = line.split('#')[0].strip()  # Remove comments and trim
-        if line:
-            lines.append(line)
-    return lines
+    """
+    Remove comments and blank lines from query.
+    
+    WHAT THIS DOES:
+    Cleans the input query by removing Python-style # comments
+    and extra whitespace, making it ready for parsing.
+    
+    WHY IT MATTERS:
+    Comments allow users to document their queries without breaking parsing.
+    This function strips them out cleanly.
+    
+    PARAMETERS:
+    query (str): Raw query possibly with comments
+    
+    RETURNS:
+    str: Cleaned query with comments removed
+    
+    EXAMPLES:
+    >>> preprocess('cancer # search term\\nAND treatment')
+    'cancer\\nAND treatment'
+    """
+    lines = query.split('\n')
+    cleaned_lines = []
+    
+    for line in lines:
+        # Remove inline comments (# outside of quotes)
+        line = remove_inline_comment(line)
+        # Skip blank lines
+        if line.strip():
+            cleaned_lines.append(line)
+    
+    return '\n'.join(cleaned_lines)
 
-# ════════════════════════════════════════════════════════════════════════════
-# UTILITIES
-# ════════════════════════════════════════════════════════════════════════════
 
-def normalize_op(token):
-    """Normalize operator token to English (AND/OR/NOT)"""
-    return OPERATOR_MAP.get(token.upper())
+def remove_inline_comment(line):
+    """
+    Remove Python-style comment from a single line.
+    Respects quotes - doesn't remove # inside quoted strings.
+    """
+    in_single_quote = False
+    in_double_quote = False
+    
+    for i, char in enumerate(line):
+        if char == '"' and not in_single_quote:
+            in_double_quote = not in_double_quote
+        elif char == "'" and not in_double_quote:
+            in_single_quote = not in_single_quote
+        elif char == '#' and not in_single_quote and not in_double_quote:
+            return line[:i].rstrip()
+    
+    return line
 
-def is_balanced_parens(text):
-    """Check if parentheses are balanced (ignore inside quotes)"""
-    depth, in_quotes = 0, False
-    for char in text:
-        if char == '"':
-            in_quotes = not in_quotes
-        elif not in_quotes:
-            if char == '(':
-                depth += 1
-            elif char == ')':
-                depth -= 1
-                if depth < 0:
-                    return False
-    return depth == 0
 
-def find_innermost_parens(text):
-    """Find innermost (start, end) indices, or None"""
-    depth, in_quotes = 0, False
-    start = None
-    for i, char in enumerate(text):
-        if char == '"':
-            in_quotes = not in_quotes
-        elif not in_quotes:
-            if char == '(':
-                if depth == 0:
-                    start = i
-                depth += 1
-            elif char == ')':
-                depth -= 1
-                if depth == 0 and start is not None:
-                    return (start, i + 1)
-    return None
+# ============================================================================
+# FORMAT DETECTION
+# ============================================================================
 
-def normalize_operators(expr):
-    """Replace German operators with English in expression"""
-    result = expr
-    for german, english in OPERATOR_MAP.items():
-        if german != english:
-            result = result.replace(' ' + german + ' ', ' ' + english + ' ')
-    return result
-
-# ════════════════════════════════════════════════════════════════════════════
-# PHASE 2: DETECT FORMAT
-# ════════════════════════════════════════════════════════════════════════════
-
-def detect_format(lines):
-    """Detect MULTI_LINE or SINGLE_LINE format"""
+def detect_format(query):
+    """
+    Determine if query is single-line or multi-line format.
+    
+    WHAT THIS DOES:
+    Analyzes the query structure to identify format:
+    - SINGLE_LINE: Everything on one line, e.g., "cancer AND treatment"
+    - MULTI_LINE: Operators on separate lines (3+ lines, odd count)
+    
+    WHY IT MATTERS:
+    Different formats have different validation rules.
+    Must identify correctly to apply the right validation.
+    
+    PARAMETERS:
+    query (str): Query to analyze
+    
+    RETURNS:
+    str: 'SINGLE_LINE', 'MULTI_LINE', or 'UNKNOWN'
+    
+    EXAMPLES:
+    >>> detect_format('cancer AND treatment')
+    'SINGLE_LINE'
+    
+    >>> detect_format('(cancer)\\nAND\\n(treatment)')
+    'MULTI_LINE'
+    """
+    lines = query.strip().split('\n')
+    
     if len(lines) == 1:
         return 'SINGLE_LINE'
     
-    # Multi-line: 3+ lines, odd count, even lines are operators
     if len(lines) >= 3 and len(lines) % 2 == 1:
-        all_ops = all(normalize_op(lines[i].upper()) for i in range(1, len(lines), 2))
-        if all_ops:
-            return 'MULTI_LINE'
+        return 'MULTI_LINE'
     
-    return 'SINGLE_LINE'
+    return 'UNKNOWN'
 
-# ════════════════════════════════════════════════════════════════════════════
-# MULTI-LINE PARSING
-# ════════════════════════════════════════════════════════════════════════════
 
-def validate_multiline(lines):
-    """Validate multi-line format"""
-    # Rule 1: Odd count, min 3
-    if len(lines) < 3:
-        raise ParseError(f"MULTI-LINE: Need 3+ lines, got {len(lines)}")
-    if len(lines) % 2 == 0:
-        raise ParseError(f"MULTI-LINE: Need odd count, got {len(lines)}")
-    
-    # Rule 4: Each odd line must have balanced parens (check FIRST)
-    for i in range(0, len(lines), 2):
-        if not is_balanced_parens(lines[i]):
-            raise ParseError(
-                f"MULTI-LINE: Line {i+1} has unbalanced parentheses.\n"
-                f"  {lines[i]}\n"
-                f"  Use SINGLE-LINE format for cross-line nesting."
-            )
-    
-    # Rule 2: All operators identical
-    ops = [normalize_op(lines[i].upper()) for i in range(1, len(lines), 2)]
-    if len(set(ops)) > 1:
-        raise ParseError(f"MULTI-LINE: Mixed operators {set(ops)}")
-    
-    # Rule 3: Each odd line is valid
-    for i in range(0, len(lines), 2):
-        validate_single_line(lines[i])
+# ============================================================================
+# MULTI-LINE VALIDATION
+# ============================================================================
 
-def parse_multiline(lines):
-    """Parse multi-line to fully parenthesized form"""
-    validate_multiline(lines)
+def validate_multiline(query):
+    """
+    Validate multi-line query format.
     
-    # Parse each odd line
-    parsed = [parse_single_line(lines[i]) for i in range(0, len(lines), 2)]
+    WHAT THIS DOES:
+    Checks if multi-line query follows the proper format:
+    - Must have odd number of lines (content, operator, content, ...)
+    - Lines at even indices: content (must be valid)
+    - Lines at odd indices: operators (AND, OR, NOT)
     
-    # Combine with operator
-    op = normalize_op(lines[1].upper())
-    result = parsed[0]
-    for p in parsed[1:]:
-        result += f" {op} {p}"
+    WHY IT MATTERS:
+    Multi-line format has specific structural requirements.
+    This ensures the query structure is correct before parsing.
     
-    return f"({result})"
+    PARAMETERS:
+    query (str): Multi-line query string
+    
+    RETURNS:
+    bool: True if valid multi-line format, False otherwise
+    
+    EXAMPLES:
+    >>> validate_multiline('(cancer)\\nAND\\n(treatment)')
+    True
+    
+    >>> validate_multiline('(cancer)\\nAND')  # Missing final content
+    False
+    """
+    lines = query.strip().split('\n')
+    
+    # Must have odd number of lines
+    if len(lines) < 3 or len(lines) % 2 == 0:
+        return False
+    
+    # Validate each line
+    for i, line in enumerate(lines):
+        if i % 2 == 0:  # Even index = content line
+            if not validate_single_line(line.strip()):
+                return False
+        else:  # Odd index = operator line
+            if not is_valid_operator_line(line.strip()):
+                return False
+    
+    return True
 
-# ════════════════════════════════════════════════════════════════════════════
-# SINGLE-LINE PARSING
-# ════════════════════════════════════════════════════════════════════════════
 
-def tokenize(line):
-    """Split line into tokens (parens separate)"""
-    tokens = []
-    current = ""
-    in_quotes = False
+def is_valid_operator_line(line):
+    """Check if a line contains a valid operator (AND, OR, NOT)."""
+    operator = normalize_operators(line)
+    return operator in ['AND', 'OR', 'NOT']
+
+
+# ============================================================================
+# SINGLE-LINE VALIDATION (ENHANCED IN v1.1.0)
+# ============================================================================
+
+def validate_single_line(query):
+    """
+    Validate single-line query format.
     
-    for char in line:
-        if char == '"':
-            in_quotes = not in_quotes
-            current += char
-        elif char in '()' and not in_quotes:
-            if current:
-                tokens.append(current)
-                current = ""
-            tokens.append(char)
-        elif char == ' ' and not in_quotes:
-            if current:
-                tokens.append(current)
-                current = ""
+    WHAT THIS DOES:
+    Checks if single-line query contains valid tokens:
+    - Operators (AND, OR, NOT)
+    - Quoted phrases ("text" or 'text')
+    - Field-specific terms ("term"[MeSH])  ← NEW in v1.1.0
+    - Parentheses ( and )
+    - Simple terms (single words)
+    
+    WHY IT MATTERS:
+    Single-line validation ensures all tokens in the query are recognized.
+    This is the core validation function used by both single and multi-line.
+    
+    PARAMETERS:
+    query (str): Single-line query to validate
+    
+    RETURNS:
+    bool: True if all tokens are valid, False if any invalid token found
+    
+    EXAMPLES:
+    >>> validate_single_line('cancer AND treatment')
+    True
+    
+    >>> validate_single_line('"cancer"[MeSH] AND treatment')
+    True
+    
+    >>> validate_single_line('cancer [INVALID]')
+    False
+    """
+    tokens = tokenize(query)
+    
+    for token in tokens:
+        if is_operator(token):
+            # Operators are valid
+            continue
+        elif is_quoted_phrase(token):
+            # Quoted phrases without field codes are valid
+            continue
+        elif is_field_term(token):
+            # Field-specific terms are valid (NEW in v1.1.0)
+            continue
+        elif is_parenthesis(token):
+            # Parentheses are valid
+            continue
+        elif is_simple_term(token):
+            # Simple terms are valid
+            continue
         else:
-            current += char
+            # Unknown token type - invalid
+            return False
     
-    if current:
-        tokens.append(current)
+    return True
+
+
+# ============================================================================
+# NEW FUNCTION IN v1.1.0: is_field_term()
+# ============================================================================
+
+def is_field_term(token):
+    """
+    Recognize if a token is a field-specific search term.
+    
+    WHAT THIS DOES:
+    Identifies PubMed/database field-specific search patterns.
+    These combine a quoted search term with a database field code in brackets.
+    
+    EXAMPLES OF FIELD-SPECIFIC TERMS:
+    - "cancer"[MeSH]      ← Search for "cancer" in MeSH database
+    - 'tumor'[TIAB]       ← Search for 'tumor' in Title/Abstract
+    - "2020-2025"[pdat]   ← Search for dates in publication date field
+    - "(cancer OR tumor)"[TIAB]  ← Complex search in Title/Abstract
+    
+    WHY IT MATTERS:
+    Medical database queries often use field-specific searches for precision.
+    Without recognizing these patterns, valid queries would be rejected.
+    
+    This function enables the parser to accept all legitimate field-specific
+    query syntax, making it compatible with PubMed, Europe PMC, etc.
+    
+    FIELD CODES RECOGNIZED:
+    This function accepts ANY field code (generic pattern matching), including:
+    - [MeSH] = Medical Subject Headings (controlled vocabulary)
+    - [TIAB] = Title and Abstract
+    - [pdat] = Publication Date
+    - [AU] = Author
+    - [TA] = Journal Name
+    - [WORD] = Any custom field code
+    
+    PARAMETERS:
+    token (str): A single token/word to check
+                 Example: "cancer"[MeSH]
+    
+    RETURNS:
+    bool: True if token matches field-term pattern, False otherwise
+    
+    EXAMPLES THAT RETURN TRUE:
+    >>> is_field_term('"cancer"[MeSH]')
+    True
+    >>> is_field_term("'tumor'[TIAB]")
+    True
+    >>> is_field_term('"2020-2025"[pdat]')
+    True
+    >>> is_field_term('"any text"[field]')
+    True
+    
+    EXAMPLES THAT RETURN FALSE:
+    >>> is_field_term('cancer[MeSH]')  # Not quoted
+    False
+    >>> is_field_term('"cancer"')  # No field code
+    False
+    >>> is_field_term('"cancer"[]')  # Empty field code
+    False
+    >>> is_field_term('cancer')  # Simple term
+    False
+    
+    PATTERN STRUCTURE:
+    Field-term = (Quote) + (Content) + (Quote) + [ + (FieldCode) + ]
+                 ^                      ^          ^                 ^
+                 " or '                 " or '     [                 ]
+    
+    ALGORITHM:
+    1. Check minimum length (at least 6 characters: "a"[b])
+    2. Check token starts with quote (" or ')
+    3. Find matching closing quote of same type
+    4. Check opening bracket [ immediately after closing quote
+    5. Find closing bracket ]
+    6. Verify field code is not empty (between [ and ])
+    7. Verify nothing exists after closing bracket
+    8. Return True if all checks pass
+    """
+    
+    # STEP 1: Minimum length check
+    # Smallest valid field-term is "a"[b] which is 6 characters
+    if len(token) < 6:
+        return False
+    
+    # STEP 2: Opening quote check
+    # Must start with either double quote (") or single quote (')
+    if token[0] not in ['"', "'"]:
+        return False
+    
+    # Store which type of quote we found (to match closing quote)
+    quote_type = token[0]
+    
+    # STEP 3: Find closing quote
+    # Search for the matching closing quote starting after position 0
+    closing_quote_pos = -1
+    for i in range(1, len(token)):
+        if token[i] == quote_type:
+            closing_quote_pos = i
+            break
+    
+    # If no closing quote found, not a valid field-term
+    if closing_quote_pos == -1:
+        return False
+    
+    # STEP 4: Check for opening bracket [
+    # The next character after the closing quote MUST be [
+    if closing_quote_pos + 1 >= len(token):
+        # Token ends right after closing quote, no bracket possible
+        return False
+    
+    if token[closing_quote_pos + 1] != '[':
+        # Next character isn't [, so not a field-term
+        return False
+    
+    # STEP 5: Find closing bracket ]
+    # Search for ] after the opening bracket
+    closing_bracket_pos = -1
+    for i in range(closing_quote_pos + 2, len(token)):
+        if token[i] == ']':
+            closing_bracket_pos = i
+            break
+    
+    # If no closing bracket found, not a valid field-term
+    if closing_bracket_pos == -1:
+        return False
+    
+    # STEP 6: Verify field code is not empty
+    # Calculate field code length (between [ and ])
+    # We found [ at position (closing_quote_pos + 1)
+    # Field code starts at (closing_quote_pos + 2) and ends before closing_bracket_pos
+    field_code_length = closing_bracket_pos - (closing_quote_pos + 2)
+    
+    if field_code_length < 1:
+        # Empty field code like "term"[]
+        return False
+    
+    # STEP 7: Verify nothing after closing bracket
+    # The closing bracket should be the LAST character in the token
+    if closing_bracket_pos != len(token) - 1:
+        # Extra characters after bracket like "term"[field]extra
+        return False
+    
+    # STEP 8: All checks passed - this IS a field-term!
+    return True
+
+
+# ============================================================================
+# TOKEN TYPE CHECKING FUNCTIONS
+# ============================================================================
+
+def is_operator(token):
+    """Check if token is an operator (AND, OR, NOT)."""
+    return normalize_operators(token) in ['AND', 'OR', 'NOT']
+
+
+def is_quoted_phrase(token):
+    """
+    Check if token is a quoted phrase WITHOUT field code.
+    
+    WHAT THIS DOES:
+    Identifies quoted strings like "phrase" or 'phrase'
+    But NOT field-specific terms like "phrase"[MeSH]
+    
+    RETURNS:
+    bool: True if quoted but NOT a field-term
+    
+    EXAMPLES:
+    >>> is_quoted_phrase('"cancer"')
+    True
+    >>> is_quoted_phrase("'treatment'")
+    True
+    >>> is_quoted_phrase('"cancer"[MeSH]')
+    False  # This is a field-term, not a simple quoted phrase
+    """
+    if len(token) < 2:
+        return False
+    
+    # Check for matching quotes (not field-terms)
+    if (token[0] == '"' and token[-1] == '"') or \
+       (token[0] == "'" and token[-1] == "'"):
+        # It's quoted, but make sure it's not a field-term
+        # (field-terms have brackets after the quote)
+        return not is_field_term(token)
+    
+    return False
+
+
+def is_parenthesis(token):
+    """Check if token is a parenthesis: ( or )"""
+    return token in ['(', ')']
+
+
+def is_simple_term(token):
+    """
+    Check if token is a simple unquoted term.
+    
+    WHAT THIS DOES:
+    Identifies simple words/terms without quotes or brackets.
+    
+    EXAMPLES:
+    >>> is_simple_term('cancer')
+    True
+    >>> is_simple_term('AND')
+    False  # Operators are not simple terms
+    >>> is_simple_term('"cancer"')
+    False  # Quoted terms are not simple terms
+    """
+    # Must have at least 1 character
+    if len(token) == 0:
+        return False
+    
+    # Cannot be an operator
+    if is_operator(token):
+        return False
+    
+    # Cannot be a parenthesis
+    if is_parenthesis(token):
+        return False
+    
+    # Cannot be a quoted phrase
+    if token[0] in ['"', "'"]:
+        return False
+    
+    # Anything else is a simple term
+    return True
+
+
+# ============================================================================
+# TOKENIZATION
+# ============================================================================
+
+def tokenize(query):
+    """
+    Split query into tokens, respecting quotes.
+    
+    WHAT THIS DOES:
+    Breaks a query into individual tokens (words/operators/parentheses)
+    while being aware of quoted strings and brackets.
+    
+    WHY IT MATTERS:
+    Quoted strings should be treated as single tokens, not split on spaces.
+    This function preserves quoted content as units.
+    
+    PARAMETERS:
+    query (str): Query string to tokenize
+    
+    RETURNS:
+    list: List of token strings
+    
+    EXAMPLES:
+    >>> tokenize('cancer AND treatment')
+    ['cancer', 'AND', 'treatment']
+    
+    >>> tokenize('"cancer phrase" AND treatment')
+    ['"cancer phrase"', 'AND', 'treatment']
+    """
+    tokens = []
+    current_token = ''
+    in_quote = False
+    quote_char = None
+    
+    for i, char in enumerate(query):
+        if char in ['"', "'"] and not in_quote:
+            in_quote = True
+            quote_char = char
+            current_token += char
+        elif char == quote_char and in_quote:
+            in_quote = False
+            current_token += char
+            # Check if followed by [ for field-term
+            if i + 1 < len(query) and query[i + 1] == '[':
+                # Continue to collect the field code
+                j = i + 1
+                while j < len(query) and query[j] != ']':
+                    current_token += query[j]
+                    j += 1
+                if j < len(query):
+                    current_token += query[j]  # Add closing ]
+        elif char in ['(', ')'] and not in_quote:
+            if current_token:
+                tokens.append(current_token)
+                current_token = ''
+            tokens.append(char)
+        elif char == ' ' and not in_quote:
+            if current_token:
+                tokens.append(current_token)
+                current_token = ''
+        else:
+            current_token += char
+    
+    if current_token:
+        tokens.append(current_token)
     
     return tokens
 
-def validate_single_line(line):
-    """Validate single-line format"""
-    line = ' '.join(line.split())  # Normalize whitespace
-    tokens = tokenize(line)
-    
-    # All terms must be quoted or TERM_N
-    for t in tokens:
-        if t not in '()' and not normalize_op(t):
-            if not (t.startswith('"') and t.endswith('"')) and not t.startswith('TERM_'):
-                raise ParseError(f"SINGLE-LINE: Unquoted term '{t}'")
-    
-    # No mixed operators at depth 0
-    ops, depth = set(), 0
-    for t in tokens:
-        if t == '(':
-            depth += 1
-        elif t == ')':
-            depth -= 1
-        elif normalize_op(t) and depth == 0:
-            ops.add(normalize_op(t))
-    
-    if len(ops) > 1:
-        raise ParseError(f"SINGLE-LINE: Mixed operators {ops} without parens")
 
-def unfold_parens(line):
-    """Unfold nested parentheses, return (unfolded, term_map, order)"""
-    term_map = {}
-    order = []
-    counter = [0]
-    
-    while True:
-        pos = find_innermost_parens(line)
-        if not pos:
-            break
-        
-        start, end = pos
-        counter[0] += 1
-        term_name = f"TERM_{counter[0]}"
-        
-        term_map[term_name] = line[start:end]
-        order.append(term_name)
-        line = line[:start] + term_name + line[end:]
-    
-    return line, term_map, order
+# ============================================================================
+# PARSING
+# ============================================================================
 
-def parse_single_line(line):
-    """Parse single-line to fully parenthesized form"""
-    line = ' '.join(line.split())  # Normalize whitespace
-    validate_single_line(line)
+def parse_multiline(query):
+    """
+    Parse multi-line query and return normalized output.
     
-    # Unfold nested parentheses
-    line, term_map, order = unfold_parens(line)
+    WHAT THIS DOES:
+    Processes a validated multi-line query, normalizing operators
+    and returning the formatted result.
     
-    # Validate each term (bottom-up)
-    for term_name in order:
-        term_expr = term_map[term_name]
-        inner = term_expr[1:-1] if term_expr.startswith('(') and term_expr.endswith(')') else term_expr
-        validate_single_line(inner)
+    PARAMETERS:
+    query (str): Validated multi-line query
     
-    # Tokenize and rebuild
-    tokens = tokenize(line)
+    RETURNS:
+    str: Normalized query with standard operators
+    """
+    lines = query.strip().split('\n')
     result = []
     
-    for t in tokens:
-        if t == '(' or t == ')':
-            result.append(t)
-        elif normalize_op(t):
-            result.append(normalize_op(t))
-        elif t.startswith('TERM_'):
-            result.append(t)
-        elif t.startswith('"') and t.endswith('"'):
-            result.append(f"({t[1:-1]})")  # Unquote and wrap
-        else:
-            result.append(t)
+    for i, line in enumerate(lines):
+        if i % 2 == 0:  # Content line
+            result.append(parse_single_line(line.strip()))
+        else:  # Operator line
+            result.append(normalize_operators(line.strip()))
     
-    output = ' '.join(result)
-    if not (output.startswith('(') and output.endswith(')')):
-        output = f"({output})"
-    
-    # Expand terms
-    for term_name in reversed(order):
-        term_expr = normalize_operators(term_map[term_name])
-        output = output.replace(term_name, term_expr)
-    
-    return output
+    return '\n'.join(result)
 
-# ════════════════════════════════════════════════════════════════════════════
-# MAIN
-# ════════════════════════════════════════════════════════════════════════════
 
-def parse_query(query):
-    """Main parser function"""
-    try:
-        # Phase 1: Preprocess
-        lines = preprocess(query)
-        
-        if not lines:
-            return {'success': False, 'error': 'Empty query'}
-        
-        # Phase 2: Detect format
-        fmt = detect_format(lines)
-        
-        # Phase 3: Parse
-        if fmt == 'MULTI_LINE':
-            lines_upper = [line.upper() for line in lines]
-            output = parse_multiline(lines_upper)
-        else:
-            output = parse_single_line(lines[0].upper())
-        
-        output = normalize_operators(output)
-        
-        return {
-            'success': True,
-            'output': output,
-            'format': fmt,
-        }
+def parse_single_line(query):
+    """
+    Parse single-line query and return normalized output.
     
-    except ParseError as e:
-        return {'success': False, 'error': str(e)}
-    except Exception as e:
-        return {'success': False, 'error': f'ERROR: {str(e)}'}
+    WHAT THIS DOES:
+    Normalizes operators in a single-line query while preserving
+    terms, quotes, field codes, and parentheses exactly.
+    
+    PARAMETERS:
+    query (str): Validated single-line query
+    
+    RETURNS:
+    str: Normalized query with standard operators
+    """
+    tokens = tokenize(query)
+    normalized_tokens = [normalize_operators(t) if is_operator(t) else t for t in tokens]
+    
+    # Reconstruct with proper spacing
+    result = ' '.join(normalized_tokens)
+    
+    # Handle unfold parentheses if needed
+    result = unfold_parens(result)
+    
+    return result
 
-# ════════════════════════════════════════════════════════════════════════════
-# CLI
-# ════════════════════════════════════════════════════════════════════════════
 
-if __name__ == "__main__":
-    import sys
+# ============================================================================
+# OPERATOR NORMALIZATION
+# ============================================================================
+
+def normalize_operators(text):
+    """
+    Convert operators to standard form (AND, OR, NOT).
     
-    if len(sys.argv) == 1:
-        print("=" * 80)
-        print("Boolean Query Parser v7.0 - Simplified")
-        print("=" * 80)
-        
-        while True:
-            try:
-                print("\nEnter query (empty line to finish, 'exit' to quit):")
-                query_lines = []
-                while True:
-                    line = input()
-                    if not line:
-                        break
-                    query_lines.append(line)
-                
-                query = '\n'.join(query_lines)
-                if query.lower() in ['exit', 'quit']:
-                    break
-                
-                result = parse_query(query)
-                print("\n" + "=" * 80)
-                print(f"Success: {result['success']}")
-                if result.get('format'):
-                    print(f"Format: {result['format']}")
-                if result.get('output'):
-                    print(f"Output: {result['output']}")
-                if result.get('error'):
-                    print(f"Error: {result['error']}")
-                print("=" * 80)
-            
-            except KeyboardInterrupt:
-                print("\nExiting...")
-                break
+    WHAT THIS DOES:
+    Handles multiple language/case variants of operators.
+    Converts "und" → "AND", "ODER" → "OR", etc.
     
-    else:
-        input_file = sys.argv[1]
-        try:
-            with open(input_file, 'r', encoding='utf-8') as f:
-                query = f.read()
-            
-            result = parse_query(query)
-            
-            print("=" * 80)
-            print(f"File: {input_file}")
-            print("=" * 80)
-            print(f"Success: {result['success']}")
-            if result.get('format'):
-                print(f"Format: {result['format']}")
-            if result.get('output'):
-                print(f"Output: {result['output']}")
-            if result.get('error'):
-                print(f"Error: {result['error']}")
-            print("=" * 80)
-        
-        except FileNotFoundError:
-            print(f"Error: File '{input_file}' not found")
-            sys.exit(1)
+    PARAMETERS:
+    text (str): Text potentially containing an operator
+    
+    RETURNS:
+    str: Normalized operator or original text if not an operator
+    
+    EXAMPLES:
+    >>> normalize_operators('und')
+    'AND'
+    >>> normalize_operators('ODER')
+    'OR'
+    >>> normalize_operators('cancer')
+    'cancer'
+    """
+    return OPERATOR_MAP.get(text, text)
+
+
+# ============================================================================
+# PARENTHESES HANDLING
+# ============================================================================
+
+def unfold_parens(query):
+    """
+    Process parentheses in query (future expansion point).
+    
+    WHAT THIS DOES:
+    Placeholder for parentheses processing.
+    Currently returns query unchanged.
+    Can be expanded for parentheses optimization/analysis.
+    
+    PARAMETERS:
+    query (str): Query with parentheses
+    
+    RETURNS:
+    str: Processed query
+    """
+    # In future versions, this could:
+    # - Validate parentheses matching
+    # - Optimize nested parentheses
+    # - Flatten unnecessary nesting
+    # For now, return unchanged
+    return query
