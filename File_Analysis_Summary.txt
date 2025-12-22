@@ -1,0 +1,621 @@
+═══════════════════════════════════════════════════════════════════════════════
+FILE ANALYSIS SUMMARY - Quick Reference Guide
+Scientific Research Tool - All 14 Files Overview
+═══════════════════════════════════════════════════════════════════════════════
+
+📋 ABOUT THIS DOCUMENT
+═══════════════════════════════════════════════════════════════════════════════
+
+Quick reference guide for all 14 files in the Scientific Research Tool project.
+This is a condensed version of the complete analysis - use it for quick lookups.
+
+Generated: December 22, 2025
+Project: Multi-Database Boolean Query Compiler & Search Tool
+Files Analyzed: 14 (12 Python + 2 JSON)
+
+
+================================================================================
+QUICK FILE REFERENCE
+================================================================================
+
+PYTHON MODULES (src/core/):
+
+1. BOOLEAN_PARSER.PY (29.5 KB)
+   Purpose: Query validation & analysis
+   What it does:
+   - Validates boolean query syntax
+   - Detects field-specific terms like [MeSH], [TIAB], [pdat]
+   - Checks operator balance & sequence
+   - Supports multi-line queries
+   
+   Key functions:
+   - is_field_term() → Identifies field tags
+   - tokenize() → Splits query into tokens
+   - validate_single_line() → Validates one-line queries
+   - validate_multiline() → Validates multi-line queries
+
+   Used by: main.py, query_validator.py
+
+---
+
+2. QUERY_PARSER_WITH_COMMENTS.PY (13.0 KB)
+   Purpose: Load queries from files with comment support
+   What it does:
+   - Reads queries from text files
+   - Removes Python-style comments (#)
+   - Supports inline comments (# to end of line)
+   - Smart detection (ignores # in quotes/brackets)
+   
+   Key functions:
+   - load_query_with_comments() → Loads file, removes comments
+   - _remove_inline_comment() → Removes # from single line
+
+   Used by: main.py
+   
+   Example:
+   Input file:
+     # Search for Coenzym Q10
+     'Coenzym Q10'  # Modern name
+     AND (2015:2025[pdat])
+   
+   Output: 'Coenzym Q10' AND (2015:2025[pdat])
+
+---
+
+3. QUERY_COMPILER.PY (9.4 KB)
+   Purpose: Translate universal queries to database-specific syntax
+   What it does:
+   - Converts universal format to PubMed syntax
+   - Converts universal format to Europe PMC syntax
+   - Converts universal format to Cochrane syntax
+   - Handles date format conversion
+   
+   Key functions:
+   - _compile_for_pubmed() → PubMed translation
+   - _compile_for_europepmc() → Europe PMC translation
+   - _compile_for_cochrane() → Cochrane translation
+
+   Used by: main.py
+
+   Conversion Examples:
+   Universal: (cancer OR tumor) AND (2015:2025[pdat])
+   ├─ PubMed:    (cancer OR tumor) AND (2015:2025[pdat])
+   ├─ EuroPMC:   (cancer OR tumor) AND PUB_YEAR:(2015-2025)
+   └─ Cochrane:  (cancer OR tumor) AND (2015:2025)
+
+---
+
+4. QUERY_DETECTOR.PY (11.8 KB)
+   Purpose: Auto-detect query format and language
+   What it does:
+   - Detects if query is pre-formatted or natural language
+   - Identifies database-specific syntax (PubMed vs Europe PMC)
+   - Detects language (German vs English)
+   - Returns detection confidence
+   
+   Key functions:
+   - detect() → Main detection function
+   - _detect_pubmed_format() → Checks for PubMed markers
+   - _detect_europepmc_format() → Checks for Europe PMC markers
+   - _is_german() → German language detection
+
+   Used by: main.py (optional)
+
+---
+
+5. QUERY_VALIDATOR.PY (2.7 KB)
+   Purpose: Validate query syntax before API calls
+   What it does:
+   - Checks query length (min 3 characters)
+   - Detects if formatted or natural language
+   - Validates bracket balance
+   - Database-specific validation
+   
+   Key functions:
+   - analyze() → Main validation function
+   - _is_formatted() → Checks if formatted for DB
+   - _check_brackets() → Validates bracket balance
+
+   Used by: main.py
+
+---
+
+6. LOGGING_MANAGER.PY (8.2 KB)
+   Purpose: Centralized logging for all operations
+   What it does:
+   - Creates logs per database
+   - Writes to console AND file simultaneously
+   - Supports DEBUG/INFO/ERROR levels
+   - Implements singleton pattern (one instance per database)
+   
+   Key features:
+   - Automatic log directory creation
+   - Timestamp in log filenames
+   - Database-specific log files
+   - Verbose mode support
+   
+   Log file pattern: pubmed_search_2025-12-22.log
+
+   Used by: ALL modules
+
+---
+
+7. DATABASE_ADAPTER.PY (1.5 KB)
+   Purpose: Abstract interface for all database adapters
+   What it does:
+   - Defines standard DatabaseAdapter class
+   - Forces all adapters to implement search() method
+   - Ensures consistent interface
+   
+   Key class:
+   - DatabaseAdapter(ABC) → Abstract base class
+   
+   Must implement:
+   - search(query: str, limit: int) → List[Dict[str, Any]]
+
+   Inherited by: PubMedAdapter, EuropePMCAdapter, CochraneAdapter
+
+---
+
+CONFIGURATION LAYER (src/config/):
+
+8. SETTINGS.PY (9.6 KB)
+   Purpose: Configuration management
+   What it does:
+   - Loads environment variables from .env
+   - Validates required settings
+   - Provides centralized config access
+   
+   Key settings:
+   - NCBI_API_KEY → PubMed API key
+   - NCBI_EMAIL → Contact email for NCBI
+   - EUROPE_PMC_EMAIL → Optional
+   - LOG_DIR → Log directory path
+   - REQUEST_TIMEOUT → HTTP timeout (seconds)
+   - RATE_LIMIT_DELAY → Pause between requests
+
+   Used by: ALL modules
+
+   Configuration examples:
+   NCBI_API_KEY=your_key_here
+   NCBI_EMAIL=your_email@example.com
+   LOG_DIR=logs
+   REQUEST_TIMEOUT=30
+   RATE_LIMIT_DELAY=0.5
+
+---
+
+9. PUBMED-SYNTAX.JSON (5.4 KB)
+   Purpose: PubMed syntax rules specification
+   What it contains:
+   - Direct search rules (operators, phrases, wildcards)
+   - Field-specific search tags
+   - Common errors & corrections
+   - Validation rules
+   - Conversion rules
+   
+   Key field tags:
+   [ti] = Title only
+   [ab] = Abstract only
+   [tiab] = Title + Abstract
+   [au] = Author
+   [ta] = Journal Title
+   [pdat] = Publication Date
+   [mh] = MeSH Terms
+   
+   Date format: YYYY:YYYY[pdat]
+   Phrase format: "exact phrase"
+   Wildcard: min 4 chars before *
+
+   Used by: query_compiler.py
+
+---
+
+10. EUROPE-PMC-SYNTAX.JSON (15.6 KB)
+    Purpose: Europe PMC syntax rules specification
+    What it contains:
+    - Direct search rules
+    - Field-specific search syntax
+    - Critical formatting rules
+    - Common errors & fixes
+    - Date field specifications
+    
+    Key field syntax:
+    TITLE:term = Search title
+    ABSTRACT:term = Search abstract
+    AUTH:name = Search author
+    JOURNAL:name = Search journal
+    PUB_YEAR:(YYYY-YYYY) = Date range
+    FIRST_PDATE:[DATE TO DATE] = Pre-print dates
+    
+    CRITICAL RULE - PUB_YEAR:
+    Format: PUB_YEAR:(2015-2025)
+    Brackets: ROUND ()
+    Separator: Dash -
+    
+    CRITICAL RULE - FIRST_PDATE:
+    Format: [2020-01-01 TO 2020-12-31]
+    Brackets: SQUARE []
+    Separator: TO keyword
+
+    Used by: query_compiler.py
+
+---
+
+DATABASE LAYER (src/databases/):
+
+11. PUBMED.PY (6.3 KB)
+    Purpose: PubMed API adapter
+    What it does:
+    - Connects to PubMed E-Utilities API
+    - Executes ESearch (find IDs)
+    - Executes ESummary (get metadata)
+    - Returns standardized results
+    
+    Key methods:
+    - search() → Main search function
+    - _esearch() → Find article IDs
+    - _efetch() → Get article metadata
+
+    Important: DO NOT remove [pdat] tags!
+    ✓ Correct:   cancer AND (2015:2025[pdat])
+    ✗ Wrong:     cancer AND (2015:2025)   ← 0 results
+
+    API: https://eutils.ncbi.nlm.nih.gov/entrez/eutils
+    Rate: 3 req/sec without key, 10 req/sec with key
+
+    Used by: main.py
+
+---
+
+12. EUROPE_PMC.PY (9.5 KB)
+    Purpose: Europe PMC API adapter
+    What it does:
+    - Connects to Europe PMC REST API
+    - Uses cursor-based pagination
+    - Normalizes queries (minimally)
+    - Returns standardized results
+    
+    Key methods:
+    - search() → Main search function
+    - normalize_query() → Clean query
+    - process_results() → Format results
+
+    Query normalization (KEEPS):
+    ✓ Parentheses ()
+    ✓ Quotes ""
+    ✓ Dashes - (for CRISPR-Cas9)
+    ✓ Operators AND, OR, NOT
+
+    API: https://www.ebi.ac.uk/europepmc/webservices/rest
+    Pagination: Cursor-based (efficient for large sets)
+
+    Used by: main.py, cochrane.py
+
+---
+
+13. COCHRANE.PY (5.8 KB)
+    Purpose: Cochrane Library adapter
+    What it does:
+    - Searches via Europe PMC API
+    - Filters for Cochrane-specific reviews
+    - Implements soft-filtering strategy
+    
+    Key methods:
+    - search() → Main search function
+    - process_results() → Format results
+
+    Detection logic:
+    Result is Cochrane if:
+    ✓ Journal contains "Cochrane"
+    ✓ Title contains "Systematic Review"
+    ✓ DOI starts with "10.1002/14651858"
+
+    Search strategy:
+    1. Query: "(user_query) AND Cochrane"
+    2. Load 3x limit results
+    3. Filter client-side for true Cochrane
+    4. Return limited set
+
+    Used by: main.py
+
+---
+
+ENTRY POINT (Project Root):
+
+14. MAIN.PY (16.3 KB)
+    Purpose: Application entry point & orchestration
+    What it does:
+    - Parses command-line arguments
+    - Coordinates all components
+    - Executes workflow: validate → compile → search
+    - Exports results
+    
+    Workflow:
+    1. Parse arguments
+    2. Initialize LoggingManager
+    3. Load query (file or string)
+    4. Validate syntax
+    5. Compile for target database
+    6. Execute search
+    7. Export results (CSV/JSON/console)
+
+    Command-line arguments:
+    --query QUERY         Direct query string
+    --query-file FILE     Load from text file
+    --source {pubmed,europepmc,cochrane}  Target DB
+    --limit N            Max articles (default: 25)
+    --output FILE        Export to CSV/JSON
+    --verbose            Enable DEBUG logging
+
+    Examples:
+    python main.py --query "cancer AND therapy" --source pubmed
+    python main.py --query-file queries/test.txt --source europepmc --limit 50
+    python main.py --query "test" --source pubmed --verbose --output results.csv
+
+
+================================================================================
+FILE RELATIONSHIPS & DEPENDENCIES
+================================================================================
+
+main.py (orchestrator)
+├── settings.py (config)
+├── query_parser_with_comments.py (file loading)
+├── query_validator.py (syntax check)
+├── query_compiler.py (DB translation)
+│   ├── pubmed-syntax.json
+│   └── europe-pmc-syntax.json
+├── logging_manager.py (logging)
+├── query_detector.py (format detection)
+├── database_adapter.py (interface)
+│   ├── pubmed.py (PubMed adapter)
+│   │   ├── settings.py
+│   │   └── logging_manager.py
+│   ├── europe_pmc.py (Europe PMC adapter)
+│   │   ├── settings.py
+│   │   └── logging_manager.py
+│   └── cochrane.py (Cochrane adapter)
+│       ├── europe_pmc.py (uses Europe PMC API)
+│       ├── settings.py
+│       └── logging_manager.py
+└── boolean_parser.py (deep analysis - optional)
+
+
+================================================================================
+COMMAND-LINE USAGE EXAMPLES
+================================================================================
+
+BASIC SEARCH:
+python main.py --query "cancer AND therapy" --source pubmed --limit 10
+
+SEARCH FROM FILE:
+python main.py --query-file queries/coenzym_q10.txt --source europepmc
+
+WITH EXPORT:
+python main.py --query "diabetes" --source pubmed --output results.csv
+python main.py --query "diabetes" --source pubmed --output results.json
+
+VERBOSE MODE (DEBUG):
+python main.py --query "cancer" --source pubmed --verbose
+
+COMPLEX QUERY:
+python main.py --query "(cancer OR tumor) AND (2015:2025[pdat]) NOT mouse" --source pubmed
+
+ALL OPTIONS:
+python main.py --query-file queries/test.txt --source europepmc --limit 50 --output results.csv --verbose
+
+
+================================================================================
+VALIDATION RULES
+================================================================================
+
+REQUIRED QUERY FORMAT:
+✓ Uses AND, OR, NOT (uppercase only)
+✓ Balanced parentheses ()
+✓ Phrases in double quotes "..."
+✓ Field tags correct ([ti], [ab], [pdat])
+✓ Does not start with operator
+✓ Does not end with operator
+✓ No double operators (AND AND)
+
+INVALID QUERIES (REJECTED):
+✗ "What is cancer?" (question format)
+✗ "Physiologische Funktionen" (natural language)
+✗ "Is squirting effective?" (question)
+✗ AND cancer (starts with operator)
+✗ cancer AND (ends with operator)
+✗ (cancer AND tumor (unbalanced)
+✗ cancer AND AND therapy (double operator)
+
+DATABASE-SPECIFIC RULES:
+
+PubMed:
+- Uses field tags [tag]
+- Date format: YYYY:YYYY[pdat]
+- DO NOT REMOVE [pdat] tag!
+- Tags are case-insensitive
+
+Europe PMC:
+- Uses field syntax FIELD:value
+- Date format: PUB_YEAR:(YYYY-YYYY)
+- Uses round brackets ()
+- Field names case-insensitive
+
+Cochrane:
+- Via Europe PMC + filtering
+- Searches for "Cochrane" marker
+- Returns systematic reviews only
+
+
+================================================================================
+CONFIGURATION (.env FILE)
+================================================================================
+
+REQUIRED:
+NCBI_API_KEY=your_api_key_from_ncbi
+NCBI_EMAIL=your_email@example.com
+
+OPTIONAL BUT RECOMMENDED:
+EUROPE_PMC_EMAIL=your_email@example.com
+
+OPTIONAL (DEFAULTS SHOWN):
+LOG_DIR=logs
+REQUEST_TIMEOUT=30
+RATE_LIMIT_DELAY=0.5
+
+Get API Key:
+https://www.ncbi.nlm.nih.gov/account/
+
+
+================================================================================
+IMPORTANT NOTES & WARNINGS
+================================================================================
+
+CRITICAL:
+1. DO NOT remove [pdat] tags from queries
+2. DO use double quotes for phrases (not single)
+3. DO use UPPERCASE for operators (AND, OR, NOT)
+4. Date format differs: PubMed uses :, Europe PMC uses -
+5. Configure .env with API credentials for full speed
+
+DATE FORMAT DIFFERENCES:
+PubMed:      2015:2025[pdat]           (colon with tag)
+Europe PMC:  PUB_YEAR:(2015-2025)      (dash without tag)
+Cochrane:    2015:2025                 (colon no tag)
+
+RATE LIMITS:
+Without API key:  3 requests/second
+With API key:     10 requests/second
+Delay enforced:   0.5 seconds between requests (configurable)
+
+COCHRANE LIMITATION:
+No direct API - searched via Europe PMC
+Results must be filtered for Cochrane marker
+May load more results than needed, then filter client-side
+
+LOGGING:
+Automatic per database: pubmed_search_2025-12-22.log
+Dual output: console + file
+Timestamp in filename for daily rotation
+
+
+================================================================================
+QUICK PROBLEM SOLVING
+================================================================================
+
+PROBLEM: Query returns 0 results
+SOLUTION: Check for [pdat] tag, validate syntax
+
+PROBLEM: "Too many requests" error
+SOLUTION: Add NCBI_API_KEY to .env, wait between searches
+
+PROBLEM: Natural language not working
+SOLUTION: Use pre-formatted Boolean query or add to LLM pipeline
+
+PROBLEM: Date range not filtering
+SOLUTION: Verify date format (PubMed: :, Europe PMC: -)
+
+PROBLEM: Cochrane finds non-Cochrane articles
+SOLUTION: Filters are "soft" - refine client-side
+
+PROBLEM: Logs missing
+SOLUTION: Check logs/ directory exists, verify LOG_DIR in .env
+
+PROBLEM: Can't load query file
+SOLUTION: Check file path is relative to project root
+
+
+================================================================================
+KEY ARCHITECTURAL PATTERNS
+================================================================================
+
+SINGLETON PATTERN:
+Where: LoggingManager
+Purpose: Only one logger per database
+Benefit: Prevents duplicate logs, thread-safe
+
+ADAPTER PATTERN:
+Where: PubMedAdapter, EuropePMCAdapter, CochraneAdapter
+Purpose: Different implementations, same interface
+Benefit: Plug-and-play database support
+
+ABSTRACT BASE CLASS:
+Where: DatabaseAdapter
+Purpose: Define interface all adapters must follow
+Benefit: Consistent contract, extensible design
+
+COMPILER PATTERN:
+Where: QueryCompiler
+Purpose: Transform universal query to DB-specific syntax
+Benefit: Users write once, works for all databases
+
+CONFIGURATION PATTERN:
+Where: Settings class
+Purpose: Externalize configuration from code
+Benefit: Safe credentials, environment switching
+
+STRATEGY PATTERN:
+Where: QueryDetector
+Purpose: Different detection strategies
+Benefit: Flexible format recognition
+
+
+================================================================================
+EXPORT FORMATS
+================================================================================
+
+CSV Export:
+python main.py --query "cancer" --output results.csv
+
+Result format:
+id,source,title,year,authors,journal,doi,url,abstract
+12345,pubmed,Article Title,2020,Smith J,Nature,...
+
+JSON Export:
+python main.py --query "cancer" --output results.json
+
+Result format:
+[
+  {
+    "id": "12345",
+    "source": "pubmed",
+    "title": "Article Title",
+    "year": 2020,
+    "authors": "Smith J",
+    "journal": "Nature",
+    "doi": "10.1234/...",
+    "url": "https://...",
+    "abstract": "..."
+  }
+]
+
+
+================================================================================
+FILE SIZE & COMPLEXITY SUMMARY
+================================================================================
+
+File                              Size    Complexity   Critical
+──────────────────────────────────────────────────────────────
+boolean_parser.py                 29.5KB  MEDIUM       YES
+query_parser_with_comments.py     13.0KB  MEDIUM       YES
+query_compiler.py                 9.4KB   MEDIUM       YES
+query_detector.py                 11.8KB  LOW          NO
+query_validator.py                2.7KB   LOW          NO
+logging_manager.py                8.2KB   MEDIUM       YES
+database_adapter.py               1.5KB   LOW          YES
+settings.py                       9.6KB   LOW          YES
+main.py                           16.3KB  HIGH         YES
+pubmed.py                         6.3KB   MEDIUM       YES
+europe_pmc.py                     9.5KB   MEDIUM       YES
+cochrane.py                       5.8KB   LOW          NO
+pubmed-syntax.json                5.4KB   LOW          YES
+europe-pmc-syntax.json            15.6KB  LOW          YES
+
+TOTAL: ~124 KB, ~3,500+ lines
+
+
+================================================================================
+END OF SUMMARY
+Generated: December 22, 2025
+This is a quick reference. See File_Analysis_Complete.md for full details.
+================================================================================

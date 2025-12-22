@@ -1,7 +1,0 @@
-'Coenzyme Q10'
-AND
-physiolog*
-AND
-function
-AND
-(2015:2025[pdat])
