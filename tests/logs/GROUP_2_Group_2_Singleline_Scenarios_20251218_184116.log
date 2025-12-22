@@ -1,0 +1,58 @@
+================================================================================
+Group 2: Single-line Scenarios
+================================================================================
+
+Timestamp: 2025-12-18T18:41:16.488763
+Tests Passed: 7
+Tests Failed: 0
+Success Rate: 100.0%
+
+--------------------------------------------------------------------------------
+Test: 1.1 - Simple field-term passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488580
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 1.2 - Multiple field-terms with AND passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488599
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 1.3 - Field-term with simple term passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488670
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 1.4 - Field-terms in parentheses passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488687
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 1.5 - Single-quoted field-term passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488698
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 1.6 - Complex nesting with field-terms passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488717
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 1.7 - Date range in field-term passes validation
+Status: PASS
+Time: 2025-12-18T18:41:16.488728
+
+  result: Test passed successfully
+

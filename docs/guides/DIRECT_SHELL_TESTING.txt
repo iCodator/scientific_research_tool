@@ -1,0 +1,373 @@
+================================================================================
+DIREKTE PYTHON SHELL TESTS - KEINE SCRIPTÄNDERUNG
+================================================================================
+
+Öffne einfach die Python Shell und kopiere diese Befehle!
+
+================================================================================
+QUICK START - KOPIERE DIESE BEFEHLE NACHEINANDER
+================================================================================
+
+$ python
+
+>>> from src.core.boolean_parser import parse_query, is_field_term, tokenize
+
+================================================================================
+GRUNDLAGEN TESTS (Alle sollten True sein)
+================================================================================
+
+# Test 1: Einfaches field-term
+>>> parse_query('"cancer"[MeSH]')['success']
+True
+
+# Test 2: Field-term mit AND
+>>> parse_query('"cancer"[MeSH] AND treatment')['success']
+True
+
+# Test 3: Field-term mit OR
+>>> parse_query('"cancer"[MeSH] OR "tumor"[TIAB]')['success']
+True
+
+# Test 4: Mit Klammern
+>>> parse_query('("cancer"[MeSH])')['success']
+True
+
+# Test 5: Single quotes
+>>> parse_query("'cancer'[MeSH]")['success']
+True
+
+# Test 6: Multi-line
+>>> parse_query('"cancer"[MeSH]\nAND\ntreatment')['success']
+True
+
+# Test 7: Komplexes Nesting
+>>> parse_query('(("cancer"[MeSH] OR "tumor"[TIAB]) AND therapy)')['success']
+True
+
+# Test 8: Backward compatibility - simpler Term
+>>> parse_query('cancer')['success']
+True
+
+# Test 9: Backward compatibility - AND
+>>> parse_query('cancer AND treatment')['success']
+True
+
+# Test 10: Backward compatibility - Quoted
+>>> parse_query('"search phrase"')['success']
+True
+
+================================================================================
+TOKENIZATION TESTS
+================================================================================
+
+# Tokenize: Einfach field-term
+>>> tokenize('"cancer"[MeSH]')
+['"cancer"[MeSH]']
+
+# Tokenize: Mit Operator
+>>> tokenize('"cancer"[MeSH] AND treatment')
+['"cancer"[MeSH]', 'AND', 'treatment']
+
+# Tokenize: Mit Klammern
+>>> tokenize('("cancer"[MeSH])')
+['(', '"cancer"[MeSH]', ')']
+
+# Tokenize: Komplexe Query
+>>> tokenize('("cancer"[MeSH] OR "tumor"[TIAB]) AND therapy')
+['(', '"cancer"[MeSH]', 'OR', '"tumor"[TIAB]', ')', 'AND', 'therapy']
+
+================================================================================
+IS_FIELD_TERM TESTS
+================================================================================
+
+# True cases (sollten True sein)
+>>> is_field_term('"cancer"[MeSH]')
+True
+
+>>> is_field_term("'tumor'[TIAB]")
+True
+
+>>> is_field_term('"2020-2025"[pdat]')
+True
+
+>>> is_field_term('"author name"[AU]')
+True
+
+# False cases (sollten False sein)
+>>> is_field_term('cancer')
+False
+
+>>> is_field_term('cancer[MeSH]')  # Nicht quoted!
+False
+
+>>> is_field_term('"cancer"')  # Keine Klammern
+False
+
+>>> is_field_term('"cancer"[]')  # Leere Klammern
+False
+
+================================================================================
+FEHLER-SZENARIEN (Sollten alle False sein)
+================================================================================
+
+# Fehler 1: Startet mit AND
+>>> parse_query('AND cancer')['success']
+False
+
+# Fehler 2: Endet mit AND
+>>> parse_query('cancer AND')['success']
+False
+
+# Fehler 3: Double AND
+>>> parse_query('cancer AND AND treatment')['success']
+False
+
+# Fehler 4: Unbalanced parentheses (zu wenig closing)
+>>> parse_query('(cancer')['success']
+False
+
+# Fehler 5: Unbalanced parentheses (zu viel closing)
+>>> parse_query('cancer)')['success']
+False
+
+# Fehler 6: Unquoted field-code
+>>> parse_query('cancer[MeSH]')['success']
+False
+
+# Fehler 7: Empty field code
+>>> parse_query('"cancer"[]')['success']
+False
+
+================================================================================
+FEHLER-NACHRICHTEN ANSCHAUEN
+================================================================================
+
+# Sehe die Fehler-Meldung
+>>> parse_query('AND cancer')['error']
+'Cannot start with operator: AND'
+
+>>> parse_query('cancer AND')['error']
+'Cannot end with operator: AND'
+
+>>> parse_query('cancer AND AND treatment')['error']
+'Double operator: AND AND'
+
+>>> parse_query('(cancer')['error']
+'Unbalanced parentheses'
+
+================================================================================
+VOLLSTÄNDIGE ERGEBNISSE ANSEHEN
+================================================================================
+
+# Komplettes Resultat object
+>>> result = parse_query('"cancer"[MeSH]')
+>>> print(result)
+{'success': True, 'format': 'SINGLE_LINE', 'query': '"cancer"[MeSH]', 'tokens': ['"cancer"[MeSH]'], 'error': None}
+
+# Einzelne Felder
+>>> result['success']
+True
+
+>>> result['format']
+'SINGLE_LINE'
+
+>>> result['tokens']
+['"cancer"[MeSH]']
+
+>>> result['error']
+None
+
+# Multi-line Resultat
+>>> result = parse_query('"cancer"[MeSH]\nAND\ntreatment')
+>>> result['format']
+'MULTI_LINE'
+
+================================================================================
+INFORMATION EXTRACTION
+================================================================================
+
+# Query info extrahieren
+>>> from src.core.boolean_parser import get_query_info
+>>> info = get_query_info('"cancer"[MeSH] AND "treatment"[TIAB]')
+
+>>> info['tokens']
+['"cancer"[MeSH]', 'AND', '"treatment"[TIAB]']
+
+>>> info['field_terms']
+['"cancer"[MeSH]', '"treatment"[TIAB]']
+
+>>> info['num_field_terms']
+2
+
+>>> info['operators']
+['AND']
+
+>>> info['operands']
+[]
+
+================================================================================
+PRAKTISCHE TESTS - COPY & PASTE ALLE AUF EINMAL
+================================================================================
+
+# Alle wichtigen Tests mit einer Befehlsreihe:
+parse_query('"cancer"[MeSH]')['success'] == True and \
+parse_query('"cancer"[MeSH] AND treatment')['success'] == True and \
+parse_query('("cancer"[MeSH] OR "tumor"[TIAB])')['success'] == True and \
+parse_query('cancer AND')['success'] == False and \
+parse_query('AND cancer')['success'] == False and \
+is_field_term('"cancer"[MeSH]') == True and \
+is_field_term('cancer') == False
+
+# Resultat sollte sein:
+True
+
+# Wenn True → Alles funktioniert! ✅
+
+================================================================================
+ALLE 13 SZENARIEN SCHNELLCHECK
+================================================================================
+
+# Kopiere diesen Block:
+
+tests = [
+    ('"cancer"[MeSH]', True),
+    ('"cancer"[MeSH] AND "treatment"[TIAB]', True),
+    ('"cancer"[MeSH] AND treatment', True),
+    ('("cancer"[MeSH] OR "tumor"[TIAB])', True),
+    ("'cancer'[MeSH]", True),
+    ('("cancer"[MeSH] OR treatment) AND "therapy"[TIAB]', True),
+    ('"2020-2025"[pdat]', True),
+    ('"cancer"[MeSH]\nAND\ntreatment', True),
+    ('("cancer"[MeSH] OR "tumor"[TIAB])\nAND\n("treatment"[TIAB])', True),
+    ('"cancer"[MeSH]\nAND\n(treatment OR therapy)', True),
+    ('(("cancer"[MeSH] OR "tumor"[TIAB]) AND "2020-2025"[pdat])\nOR\n(therapy)', True),
+    ('"cancer"[MeSH] OR \'tumor\'[TIAB]', True),
+    ('"term"[MeSH] AND "term"[TIAB] AND "term"[pdat]', True),
+]
+
+for q, exp in tests:
+    r = parse_query(q)['success']
+    print(f"{'✅' if r == exp else '❌'} {q[:40]}")
+
+# Sollte 13 ✅ anzeigen
+
+================================================================================
+VALIDIERUNG VON EINZELNEN TEILEN
+================================================================================
+
+# Nur tokenize
+>>> from src.core.boolean_parser import tokenize
+>>> tokenize('"cancer"[MeSH] AND treatment')
+['"cancer"[MeSH]', 'AND', 'treatment']
+
+# Nur single-line validierung
+>>> from src.core.boolean_parser import validate_single_line
+>>> validate_single_line('"cancer"[MeSH]')
+True
+
+>>> validate_single_line('cancer AND')
+False
+
+# Nur multi-line validierung
+>>> from src.core.boolean_parser import validate_multiline
+>>> validate_multiline('"cancer"[MeSH]\nAND\ntreatment')
+True
+
+================================================================================
+DEBUG MODE - WENN ETWAS NICHT FUNKTIONIERT
+================================================================================
+
+# Schritt 1: Version checken
+>>> import src.core.boolean_parser as bp
+>>> bp.VERSION
+'v1.2.1'
+
+# Schritt 2: Alle Funktionen checken
+>>> dir(bp)
+# Sollte zeigen: parse_query, tokenize, validate_single_line, etc.
+
+# Schritt 3: Eine Funktion debuggen
+>>> result = parse_query('"cancer"[MeSH]')
+>>> for key, value in result.items():
+...     print(f"{key}: {value}")
+success: True
+format: SINGLE_LINE
+query: "cancer"[MeSH]
+tokens: ['"cancer"[MeSH]']
+error: None
+
+# Schritt 4: Token-by-Token check
+>>> query = '"cancer"[MeSH] AND treatment'
+>>> tokens = tokenize(query)
+>>> for token in tokens:
+...     is_ft = is_field_term(token)
+...     print(f"'{token}' → is_field_term: {is_ft}")
+'"cancer"[MeSH]' → is_field_term: True
+'AND' → is_field_term: False
+'treatment' → is_field_term: False
+
+================================================================================
+HILF-KOMMANDOS
+================================================================================
+
+# Help für eine Funktion
+>>> from src.core.boolean_parser import parse_query
+>>> help(parse_query)
+
+# Help für is_field_term
+>>> from src.core.boolean_parser import is_field_term
+>>> help(is_field_term)
+
+# Help für tokenize
+>>> from src.core.boolean_parser import tokenize
+>>> help(tokenize)
+
+================================================================================
+HÄUFIGE FEHLER & LÖSUNGEN
+================================================================================
+
+FEHLER: ImportError
+$ python -c "from src.core.boolean_parser import parse_query"
+LÖSUNG: Stelle sicher, du bist im Projekt-Root-Verzeichnis
+
+FEHLER: ModuleNotFoundError: No module named 'src'
+LÖSUNG: Prüfe, dass src/__init__.py existiert
+
+FEHLER: SyntaxError in boolean_parser.py
+LÖSUNG: Nutze v1.2.1 (nicht v1.2.0)
+
+FEHLER: Test schlägt unerwartet fehl
+LÖSUNG: Prüfe genau die Query - Field-terms MÜSSEN Quotes haben!
+   ❌ cancer[MeSH]      # Falsch!
+   ✅ "cancer"[MeSH]    # Richtig!
+
+================================================================================
+ZUSAMMENFASSUNG - SCHNELLESTE METHODE
+================================================================================
+
+Ganze Test-Suite in einer Zeile:
+
+$ python -c "
+from src.core.boolean_parser import parse_query
+tests = [
+    ('\"cancer\"[MeSH]', True),
+    ('\"cancer\"[MeSH] AND treatment', True),
+    ('cancer AND', False),
+]
+for q, exp in tests:
+    r = parse_query(q)['success']
+    print(f'{'✅' if r == exp else '❌'} {q}')
+"
+
+Resultat:
+✅ "cancer"[MeSH]
+✅ "cancer"[MeSH] AND treatment
+✅ cancer AND
+
+================================================================================
+Status: ✅ Alles bereit
+Date: December 18, 2025
+Time: 18:46 CET
+
+Viel Spaß beim Testen! 🚀
+

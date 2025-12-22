@@ -1,0 +1,37 @@
+================================================================================
+Group 3: Multi-line Scenarios
+================================================================================
+
+Timestamp: 2025-12-18T18:41:16.488932
+Tests Passed: 4
+Tests Failed: 0
+Success Rate: 100.0%
+
+--------------------------------------------------------------------------------
+Test: 2.1 - Basic multi-line with field-term parses successfully
+Status: PASS
+Time: 2025-12-18T18:41:16.488821
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 2.2 - Multiple field-terms on same line parses successfully
+Status: PASS
+Time: 2025-12-18T18:41:16.488846
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 2.3 - Mixed field-terms and simple terms parses successfully
+Status: PASS
+Time: 2025-12-18T18:41:16.488870
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: 2.4 - Complex nesting with field-terms parses successfully
+Status: PASS
+Time: 2025-12-18T18:41:16.488896
+
+  result: Test passed successfully
+

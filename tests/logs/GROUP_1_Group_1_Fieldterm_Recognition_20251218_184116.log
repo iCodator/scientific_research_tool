@@ -1,0 +1,86 @@
+================================================================================
+Group 1: Field-term Recognition
+================================================================================
+
+Timestamp: 2025-12-18T18:41:16.488502
+Tests Passed: 11
+Tests Failed: 0
+Success Rate: 100.0%
+
+--------------------------------------------------------------------------------
+Test: Double-quoted field-term with MeSH code
+Status: PASS
+Time: 2025-12-18T18:41:16.488341
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Single-quoted field-term with TIAB code
+Status: PASS
+Time: 2025-12-18T18:41:16.488350
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Numbers in quotes with date field code
+Status: PASS
+Time: 2025-12-18T18:41:16.488356
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Complex content in quotes with field code
+Status: PASS
+Time: 2025-12-18T18:41:16.488360
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Author name with AU field code
+Status: PASS
+Time: 2025-12-18T18:41:16.488364
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Term not quoted - not a field-term
+Status: PASS
+Time: 2025-12-18T18:41:16.488373
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Quoted term without field code
+Status: PASS
+Time: 2025-12-18T18:41:16.488377
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Quoted term with empty field code
+Status: PASS
+Time: 2025-12-18T18:41:16.488381
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Simple term without quotes or brackets
+Status: PASS
+Time: 2025-12-18T18:41:16.488384
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Just brackets without quoted term
+Status: PASS
+Time: 2025-12-18T18:41:16.488388
+
+  result: Test passed successfully
+
+--------------------------------------------------------------------------------
+Test: Extra characters after bracket
+Status: PASS
+Time: 2025-12-18T18:41:16.488392
+
+  result: Test passed successfully
+

@@ -1,0 +1,53 @@
+================================================================================
+Group 3: Multi-line Scenarios
+================================================================================
+
+Timestamp: 2025-12-18T18:23:33.895571
+Tests Passed: 0
+Tests Failed: 4
+Success Rate: 0.0%
+
+--------------------------------------------------------------------------------
+Test: 2.1 - Basic multi-line with field-term parses successfully
+Status: FAIL
+Time: 2025-12-18T18:23:33.895485
+
+  expected: parse_query success = True
+  actual: got False
+  reason: Query: ("cancer"[MeSH])
+AND
+(treatment)
+
+--------------------------------------------------------------------------------
+Test: 2.2 - Multiple field-terms on same line parses successfully
+Status: FAIL
+Time: 2025-12-18T18:23:33.895510
+
+  expected: parse_query success = True
+  actual: got False
+  reason: Query: ("cancer"[MeSH] OR "tumor"[TIAB])
+AND
+("treatment"[TIAB])
+
+--------------------------------------------------------------------------------
+Test: 2.3 - Mixed field-terms and simple terms parses successfully
+Status: FAIL
+Time: 2025-12-18T18:23:33.895528
+
+  expected: parse_query success = True
+  actual: got False
+  reason: Query: ("cancer"[MeSH])
+AND
+(treatment OR therapy)
+
+--------------------------------------------------------------------------------
+Test: 2.4 - Complex nesting with field-terms parses successfully
+Status: FAIL
+Time: 2025-12-18T18:23:33.895550
+
+  expected: parse_query success = True
+  actual: got False
+  reason: Query: (("cancer"[MeSH] OR "tumor"[TIAB]) AND "2020-2025"[pdat])
+OR
+(therapy)
+
